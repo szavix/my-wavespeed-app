@@ -12,7 +12,14 @@ const AVAILABLE_MODELS = [
     inputs: ['prompt', 'images']
   },
   {
-    id: 'google/nano-banana-pro',
+    id: 'google/nano-banana-pro/edit',
+    name: 'Nano Banana Pro Edit',
+    type: 'image',
+    description: 'Google Nano Banana Pro Edit. Natural language image editing. Requires reference images.',
+    inputs: ['prompt', 'images']
+  },
+  {
+    id: 'google/nano-banana-pro/text-to-image',
     name: 'Nano Banana Pro',
     type: 'image',
     description: 'Advanced image generation & editing.',
@@ -71,6 +78,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0]);
   const [selectedDimension, setSelectedDimension] = useState(AVAILABLE_DIMENSIONS[0]);
   const [prompt, setPrompt] = useState('');
+  const [resolution, setResolution] = useState('2k'); // For nano-banana-pro/edit: '1k', '2k', or '4k' (lowercase)
   
   // Support multiple images for Edit API
   const [referenceImages, setReferenceImages] = useState([]); 
@@ -205,8 +213,10 @@ export default function App() {
     
     try {
       const base64Content = magicImage.data.split(',')[1];
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+      const promptText = "Describe this image in detail to create a high-quality text-to-image prompt. Focus on subject, style, lighting, and composition. Keep it under 100 words.";
+      
+      // Use gemini-2.5-flash - stable, multimodal model with high token limits
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -214,7 +224,7 @@ export default function App() {
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: "Describe this image in detail to create a high-quality text-to-image prompt. Focus on subject, style, lighting, and composition. Keep it under 100 words." },
+              { text: promptText },
               { inlineData: { mimeType: magicImage.mimeType, data: base64Content } }
             ]
           }]
@@ -222,8 +232,8 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error?.message || "Gemini API failed");
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error?.message || `HTTP ${response.status}: Gemini API failed`);
       }
 
       const data = await response.json();
@@ -271,12 +281,28 @@ export default function App() {
     setStatus('queued');
     setLogs([]);
     addLog(`Starting job with model: ${selectedModel.name}`);
-    addLog(`Dimensions: ${selectedDimension.width}x${selectedDimension.height}`);
+    if (selectedModel.id.includes('nano-banana-pro')) {
+      addLog(`Aspect Ratio: ${selectedDimension.id}`);
+      addLog(`Resolution: ${resolution}`);
+    } else {
+      addLog(`Dimensions: ${selectedDimension.width}x${selectedDimension.height}`);
+    }
 
     try {
       let payload = {};
 
-      if (selectedModel.id.includes('seedream')) {
+      if (selectedModel.id.includes('nano-banana-pro/edit')) {
+        // Nano Banana Pro Edit requires specific format
+        payload = {
+          prompt: prompt || " ", 
+          images: referenceImages,
+          resolution: resolution, // '1k', '2k', or '4k' (lowercase)
+          aspect_ratio: selectedDimension.id, // e.g., '4:5', '9:16'
+          output_format: 'png',
+          enable_sync_mode: false,
+          enable_base64_output: false
+        };
+      } else if (selectedModel.id.includes('seedream')) {
         payload = {
           size: `${selectedDimension.width}*${selectedDimension.height}`,
           images: referenceImages, 
@@ -284,7 +310,23 @@ export default function App() {
           enable_sync_mode: false,
           enable_base64_output: false
         };
+      } else if (selectedModel.id.includes('nano-banana-pro')) {
+        // Regular Nano Banana Pro generation
+        const mainImage = referenceImages[0] || null;
+        payload = {
+          prompt: prompt || " ", 
+          aspect_ratio: selectedDimension.id, // e.g., '4:5', '9:16'
+          resolution: resolution, // '1k', '2k', or '4k' (lowercase)
+          output_format: 'png',
+          enable_sync_mode: false,
+          enable_base64_output: false
+        };
+        if (mainImage) {
+          payload.image = mainImage;
+          payload.image_url = mainImage;
+        }
       } else {
+        // Fallback for other models
         const mainImage = referenceImages[0] || null;
         payload = {
           prompt: prompt || " ", 
@@ -664,9 +706,11 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Dimension Selector */}
+                {/* Dimension/Aspect Ratio Selector */}
                 <div>
-                  <label className="block text-xs text-slate-500 mb-1">Dimensions</label>
+                  <label className="block text-xs text-slate-500 mb-1">
+                    {selectedModel.id.includes('nano-banana-pro/edit') ? 'Aspect Ratio' : 'Dimensions'}
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
                     {AVAILABLE_DIMENSIONS.map((dim) => {
                       const Icon = dim.icon;
@@ -682,12 +726,36 @@ export default function App() {
                         >
                           <Icon className="w-5 h-5 mb-1" />
                           <span className="text-sm font-medium">{dim.label}</span>
-                          <span className="text-[10px] text-slate-500 opacity-80">{dim.width} × {dim.height}</span>
+                          {!selectedModel.id.includes('nano-banana-pro/edit') && (
+                            <span className="text-[10px] text-slate-500 opacity-80">{dim.width} × {dim.height}</span>
+                          )}
                         </button>
                       );
                     })}
                   </div>
                 </div>
+
+                {/* Resolution Selector - For nano-banana-pro models */}
+                {selectedModel.id.includes('nano-banana-pro') && (
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Resolution</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['1k', '2k', '4k'].map((res) => (
+                        <button
+                          key={res}
+                          onClick={() => setResolution(res)}
+                          className={`py-2 px-3 rounded-lg border transition-all text-sm font-medium ${
+                            resolution === res
+                              ? 'bg-indigo-600/10 border-indigo-500/50 ring-1 ring-indigo-500/50 text-indigo-400'
+                              : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                          }`}
+                        >
+                          {res.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Reference Images Input */}
                 <div>
