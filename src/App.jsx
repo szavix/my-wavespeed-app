@@ -12,6 +12,13 @@ const AVAILABLE_MODELS = [
     inputs: ['prompt', 'images']
   },
   {
+    id: 'bytedance/seedream-v4.5/edit',
+    name: 'Seedream v4.5 Edit',
+    type: 'image',
+    description: 'ByteDance v4.5 Edit model. Requires reference images.',
+    inputs: ['prompt', 'images']
+  },
+  {
     id: 'google/nano-banana-pro/edit',
     name: 'Nano Banana Pro Edit',
     type: 'image',
@@ -303,6 +310,7 @@ export default function App() {
           enable_base64_output: false
         };
       } else if (selectedModel.id.includes('seedream')) {
+        // Both seedream v4 and v4.5 use size parameter
         payload = {
           size: `${selectedDimension.width}*${selectedDimension.height}`,
           images: referenceImages, 
