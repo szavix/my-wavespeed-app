@@ -31,6 +31,13 @@ const AVAILABLE_MODELS = [
     type: 'image',
     description: 'Advanced image generation & editing.',
     inputs: ['prompt', 'image']
+  },
+  {
+    id: 'bytedance/seedance-v1-pro-fast/image-to-video',
+    name: 'Seedance v1 Pro Fast',
+    type: 'video',
+    description: 'ByteDance image-to-video model. Requires reference image.',
+    inputs: ['prompt', 'image']
   }
 ];
 
@@ -81,11 +88,17 @@ const getEnv = (key) => {
 export default function App() {
   // State
   const [apiKey, setApiKey] = useState('');
-  const [geminiKey, setGeminiKey] = useState(''); 
+  const [openaiKey, setOpenaiKey] = useState(''); 
   const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0]);
   const [selectedDimension, setSelectedDimension] = useState(AVAILABLE_DIMENSIONS[0]);
   const [prompt, setPrompt] = useState('');
   const [resolution, setResolution] = useState('2k'); // For nano-banana-pro/edit: '1k', '2k', or '4k' (lowercase)
+  
+  // Video generation parameters for seedance
+  const [videoDuration, setVideoDuration] = useState(5);
+  const [videoResolution, setVideoResolution] = useState('480p');
+  const [cameraFixed, setCameraFixed] = useState(false);
+  const [seed, setSeed] = useState(-1);
   
   // Support multiple images for Edit API
   const [referenceImages, setReferenceImages] = useState([]); 
@@ -110,11 +123,11 @@ export default function App() {
   useEffect(() => {
     // 1. Try to load from LocalStorage first (user override)
     const storedWavespeedKey = localStorage.getItem('wavespeed_api_key');
-    const storedGeminiKey = localStorage.getItem('gemini_api_key');
+    const storedOpenaiKey = localStorage.getItem('openai_api_key');
 
     // 2. If not in Storage, check Environment Variables
     const envWavespeedKey = getEnv('WAVESPEED_API_KEY');
-    const envGeminiKey = getEnv('GEMINI_API_KEY');
+    const envOpenaiKey = getEnv('OPENAI_API_KEY');
 
     if (storedWavespeedKey) {
       setApiKey(storedWavespeedKey);
@@ -122,10 +135,10 @@ export default function App() {
       setApiKey(envWavespeedKey);
     }
 
-    if (storedGeminiKey) {
-      setGeminiKey(storedGeminiKey);
-    } else if (envGeminiKey) {
-      setGeminiKey(envGeminiKey);
+    if (storedOpenaiKey) {
+      setOpenaiKey(storedOpenaiKey);
+    } else if (envOpenaiKey) {
+      setOpenaiKey(envOpenaiKey);
     }
   }, []);
 
@@ -134,9 +147,9 @@ export default function App() {
     localStorage.setItem('wavespeed_api_key', key);
   };
 
-  const handleSaveGeminiKey = (key) => {
-    setGeminiKey(key);
-    localStorage.setItem('gemini_api_key', key);
+  const handleSaveOpenaiKey = (key) => {
+    setOpenaiKey(key);
+    localStorage.setItem('openai_api_key', key);
   };
 
   const addLog = (message) => {
@@ -210,8 +223,8 @@ export default function App() {
 
   const generateMagicPrompt = async () => {
     if (!magicImage) return;
-    if (!geminiKey) {
-      setError("Please enter your Google Gemini API Key in settings first.");
+    if (!openaiKey) {
+      setError("Please enter your OpenAI API Key in settings first.");
       // Don't close modal, let user see error
       return;
     }
@@ -220,36 +233,50 @@ export default function App() {
     
     try {
       const base64Content = magicImage.data.split(',')[1];
-      const promptText = "Describe this image in detail to create a high-quality text-to-image prompt. Focus on subject, style, camera angle, background, pose and background elements. Keep it under 100 words.";
+      const promptText = "Create image prompt";
       
-      // Use gemini-2.5-flash - stable, multimodal model with high token limits
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+      // Use OpenAI GPT-4 Vision API
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiKey}`
         },
         body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: promptText },
-              { inlineData: { mimeType: magicImage.mimeType, data: base64Content } }
-            ]
-          }]
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: promptText
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${magicImage.mimeType};base64,${base64Content}`
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 300
         })
       });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error?.message || `HTTP ${response.status}: Gemini API failed`);
+        throw new Error(errData.error?.message || `HTTP ${response.status}: OpenAI API failed`);
       }
 
       const data = await response.json();
-      const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const generatedText = data.choices?.[0]?.message?.content;
 
       if (generatedText) {
         setMagicPromptOutput(generatedText.trim());
       } else {
-        throw new Error("No text returned from Gemini");
+        throw new Error("No text returned from OpenAI");
       }
 
     } catch (err) {
@@ -277,6 +304,10 @@ export default function App() {
       setError("The Edit model requires at least one reference image.");
       return;
     }
+    if (selectedModel.id.includes('seedance') && referenceImages.length === 0) {
+      setError("Seedance model requires a reference image.");
+      return;
+    }
     if (!prompt && referenceImages.length === 0) {
       setError("Please enter a prompt or provide a reference image.");
       return;
@@ -291,6 +322,11 @@ export default function App() {
     if (selectedModel.id.includes('nano-banana-pro')) {
       addLog(`Aspect Ratio: ${selectedDimension.id}`);
       addLog(`Resolution: ${resolution}`);
+    } else if (selectedModel.id.includes('seedance')) {
+      addLog(`Video Resolution: ${videoResolution}`);
+      addLog(`Duration: ${videoDuration}s`);
+      addLog(`Camera Fixed: ${cameraFixed}`);
+      addLog(`Seed: ${seed}`);
     } else {
       addLog(`Dimensions: ${selectedDimension.width}x${selectedDimension.height}`);
     }
@@ -308,6 +344,17 @@ export default function App() {
           output_format: 'png',
           enable_sync_mode: false,
           enable_base64_output: false
+        };
+      } else if (selectedModel.id.includes('seedance')) {
+        // Seedance image-to-video model
+        const mainImage = referenceImages[0];
+        payload = {
+          camera_fixed: cameraFixed,
+          duration: videoDuration,
+          image: mainImage,
+          prompt: prompt || " ",
+          resolution: videoResolution,
+          seed: seed
         };
       } else if (selectedModel.id.includes('seedream')) {
         // Both seedream v4 and v4.5 use size parameter
@@ -585,7 +632,7 @@ export default function App() {
                         <textarea
                             value={magicPromptOutput}
                             onChange={(e) => setMagicPromptOutput(e.target.value)}
-                            placeholder={magicLoading ? "Gemini is thinking..." : "Your generated prompt will appear here. You can edit it before using."}
+                            placeholder={magicLoading ? "OpenAI is thinking..." : "Your generated prompt will appear here. You can edit it before using."}
                             className={`w-full h-full bg-slate-900 border ${magicPromptOutput ? 'border-amber-500/30' : 'border-slate-800'} rounded-xl p-4 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/50 resize-none transition-all`}
                             readOnly={magicLoading}
                         />
@@ -669,12 +716,12 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-500 mb-1">Google Gemini API Key</label>
+                  <label className="block text-xs text-slate-500 mb-1">OpenAI API Key</label>
                   <input
                     type="password"
-                    value={geminiKey}
-                    onChange={(e) => handleSaveGeminiKey(e.target.value)}
-                    placeholder="AIza..."
+                    value={openaiKey}
+                    onChange={(e) => handleSaveOpenaiKey(e.target.value)}
+                    placeholder="sk-..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition-all"
                   />
                 </div>
@@ -714,34 +761,36 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Dimension/Aspect Ratio Selector */}
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">
-                    {selectedModel.id.includes('nano-banana-pro/edit') ? 'Aspect Ratio' : 'Dimensions'}
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {AVAILABLE_DIMENSIONS.map((dim) => {
-                      const Icon = dim.icon;
-                      return (
-                        <button
-                          key={dim.id}
-                          onClick={() => setSelectedDimension(dim)}
-                          className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${
-                            selectedDimension.id === dim.id
-                              ? 'bg-indigo-600/10 border-indigo-500/50 ring-1 ring-indigo-500/50 text-indigo-400'
-                              : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
-                          }`}
-                        >
-                          <Icon className="w-5 h-5 mb-1" />
-                          <span className="text-sm font-medium">{dim.label}</span>
-                          {!selectedModel.id.includes('nano-banana-pro/edit') && (
-                            <span className="text-[10px] text-slate-500 opacity-80">{dim.width} × {dim.height}</span>
-                          )}
-                        </button>
-                      );
-                    })}
+                {/* Dimension/Aspect Ratio Selector - Hidden for seedance */}
+                {!selectedModel.id.includes('seedance') && (
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">
+                      {selectedModel.id.includes('nano-banana-pro/edit') ? 'Aspect Ratio' : 'Dimensions'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {AVAILABLE_DIMENSIONS.map((dim) => {
+                        const Icon = dim.icon;
+                        return (
+                          <button
+                            key={dim.id}
+                            onClick={() => setSelectedDimension(dim)}
+                            className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${
+                              selectedDimension.id === dim.id
+                                ? 'bg-indigo-600/10 border-indigo-500/50 ring-1 ring-indigo-500/50 text-indigo-400'
+                                : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                            }`}
+                          >
+                            <Icon className="w-5 h-5 mb-1" />
+                            <span className="text-sm font-medium">{dim.label}</span>
+                            {!selectedModel.id.includes('nano-banana-pro/edit') && (
+                              <span className="text-[10px] text-slate-500 opacity-80">{dim.width} × {dim.height}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Resolution Selector - For nano-banana-pro models */}
                 {selectedModel.id.includes('nano-banana-pro') && (
@@ -765,11 +814,71 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Video Parameters - For seedance model */}
+                {selectedModel.id.includes('seedance') && (
+                  <>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Video Resolution</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['480p', '720p', '1080p'].map((res) => (
+                          <button
+                            key={res}
+                            onClick={() => setVideoResolution(res)}
+                            className={`py-2 px-3 rounded-lg border transition-all text-sm font-medium ${
+                              videoResolution === res
+                                ? 'bg-indigo-600/10 border-indigo-500/50 ring-1 ring-indigo-500/50 text-indigo-400'
+                                : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                            }`}
+                          >
+                            {res}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Duration (seconds)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={videoDuration}
+                        onChange={(e) => setVideoDuration(parseInt(e.target.value) || 5)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="cameraFixed"
+                        checked={cameraFixed}
+                        onChange={(e) => setCameraFixed(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 focus:ring-2"
+                      />
+                      <label htmlFor="cameraFixed" className="text-xs text-slate-400 cursor-pointer">
+                        Camera Fixed
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Seed (-1 for random)</label>
+                      <input
+                        type="number"
+                        value={seed}
+                        onChange={(e) => setSeed(parseInt(e.target.value) || -1)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+                  </>
+                )}
+
                 {/* Reference Images Input */}
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">
                     Reference Images 
                     {selectedModel.id.includes('edit') && <span className="text-indigo-400 ml-1">(Required for Edit)</span>}
+                    {selectedModel.id.includes('seedance') && <span className="text-indigo-400 ml-1">(Required)</span>}
                   </label>
                   
                   {/* Grid of uploaded images */}
