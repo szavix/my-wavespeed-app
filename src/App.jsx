@@ -220,7 +220,7 @@ export default function App() {
     
     try {
       const base64Content = magicImage.data.split(',')[1];
-      const promptText = "Describe this image in detail to create a high-quality text-to-image prompt. Focus on subject, style, lighting, and composition. Keep it under 100 words.";
+      const promptText = "Describe this image in detail to create a high-quality text-to-image prompt. Focus on subject, style, camera angle, background, pose and background elements. Keep it under 100 words.";
       
       // Use gemini-2.5-flash - stable, multimodal model with high token limits
       const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
