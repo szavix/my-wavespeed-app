@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Image as ImageIcon, Video, Loader2, Send, Settings, AlertCircle, CheckCircle2, Upload, X, ImagePlus, Layout, Smartphone, Frame, Plus, Instagram, Palette, Film, RotateCcw } from 'lucide-react';
+import { Play, Image as ImageIcon, Video, Loader2, Send, Settings, AlertCircle, CheckCircle2, Upload, X, ImagePlus, Layout, Smartphone, Frame, Plus, Instagram, Palette, Film, RotateCcw, Menu, ChevronLeft } from 'lucide-react';
 
 // --- Configuration ---
 const AVAILABLE_MODELS = [
@@ -88,6 +88,24 @@ const getEnv = (key) => {
 export default function App() {
   // Section selection state
   const [selectedSection, setSelectedSection] = useState('custom');
+  const [sidepanelOpen, setSidepanelOpen] = useState(false); // Hidden by default on mobile, visible on desktop
+  
+  // Auto-open sidepanel on desktop, keep closed on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidepanelOpen(true);
+      } else {
+        setSidepanelOpen(false);
+      }
+    };
+    
+    // Set initial state
+    handleResize();
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   // State
   const [apiKey, setApiKey] = useState('');
@@ -1035,6 +1053,13 @@ export default function App() {
       <nav className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setSidepanelOpen(!sidepanelOpen)}
+              className="lg:hidden p-2 rounded-lg hover:bg-slate-800 transition-colors"
+              aria-label="Toggle sidepanel"
+            >
+              <Menu className="w-5 h-5 text-slate-300" />
+            </button>
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
               <Play className="w-5 h-5 text-white fill-current" />
             </div>
@@ -1054,10 +1079,29 @@ export default function App() {
         </div>
       </nav>
 
+      {/* Mobile Backdrop */}
+      {sidepanelOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setSidepanelOpen(false)}
+        />
+      )}
+
       {/* Sidepanel */}
-      <div className="fixed left-0 top-16 bottom-0 w-64 bg-slate-900/80 backdrop-blur-md border-r border-slate-800 z-40 overflow-y-auto">
+      <div className={`fixed left-0 top-16 bottom-0 w-64 bg-slate-900/80 backdrop-blur-md border-r border-slate-800 z-40 overflow-y-auto transition-transform duration-300 ${
+        sidepanelOpen ? 'translate-x-0' : '-translate-x-full'
+      } lg:translate-x-0`}>
         <div className="p-4 space-y-2">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 px-2">Sections</div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2">Sections</div>
+            <button
+              onClick={() => setSidepanelOpen(false)}
+              className="lg:hidden p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              aria-label="Close sidepanel"
+            >
+              <ChevronLeft className="w-4 h-4 text-slate-400" />
+            </button>
+          </div>
           {[
             { id: 'ig-picture', label: 'IG Picture', icon: Instagram },
             { id: 'preset-picture', label: 'Preset Picture', icon: Palette },
@@ -1083,7 +1127,7 @@ export default function App() {
         </div>
       </div>
 
-      <main className="ml-64 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="lg:ml-64 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {selectedSection === 'custom' ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             
