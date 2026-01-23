@@ -135,7 +135,7 @@ export default function App() {
   const [igSecondImages, setIgSecondImages] = useState([]);
   const [igSelectedModel, setIgSelectedModel] = useState('google/nano-banana-pro/edit');
   const [igAppendText, setIgAppendText] = useState({ blackNails: false, blackPhoneCase: false }); // Track both options independently
-  const [igPrompt, setIgPrompt] = useState('refer to face and hair from the first image, and the pose and background from the second image.'); // Editable prompt
+  const [igPrompt, setIgPrompt] = useState('refer to face and hair from the first image, and the pose, outfit and background from the second image.'); // Editable prompt
   const [igResults, setIgResults] = useState([]); // Array of result URLs from multiple jobs
   const [igLoading, setIgLoading] = useState(false);
   const [igJobStatuses, setIgJobStatuses] = useState([]); // Array of status objects for each job
@@ -184,10 +184,22 @@ export default function App() {
   const [presetResultUrl, setPresetResultUrl] = useState(null);
   const [presetError, setPresetError] = useState(null);
   
+  // Video section specific state
+  const [videoImage, setVideoImage] = useState(null);
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoFileUrl, setVideoFileUrl] = useState(null);
+  const [keepOriginalSound, setKeepOriginalSound] = useState(true);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoStatus, setVideoStatus] = useState(null);
+  const [videoResultUrl, setVideoResultUrl] = useState(null);
+  const [videoError, setVideoError] = useState(null);
+  
   const fileInputRef = useRef(null);
   const igFirstImageRef = useRef(null);
   const igSecondImagesRef = useRef(null);
   const presetFileInputRef = useRef(null);
+  const videoImageRef = useRef(null);
+  const videoFileRef = useRef(null);
 
   // Persistence & Environment Variables
   useEffect(() => {
@@ -870,6 +882,48 @@ export default function App() {
     setPresetReferenceImages(prev => prev.filter((_, index) => index !== indexToRemove));
   };
 
+  // --- Video Section Handlers ---
+  const handleVideoImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.size > 10 * 1024 * 1024) {
+      setVideoError(`File ${file.name} is too large.`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setVideoImage(reader.result);
+      setVideoError(null);
+      addLog(`Loaded image: ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+    
+    if (videoImageRef.current) videoImageRef.current.value = '';
+  };
+
+  const handleVideoFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.size > 100 * 1024 * 1024) {
+      setVideoError(`Video file ${file.name} is too large (max 100MB).`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setVideoFile(reader.result);
+      setVideoFileUrl(URL.createObjectURL(file));
+      setVideoError(null);
+      addLog(`Loaded video: ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+    
+    if (videoFileRef.current) videoFileRef.current.value = '';
+  };
+
   const generatePresetPicture = async () => {
     if (!apiKey) {
       setPresetError("Please enter your Wavespeed API Key first.");
@@ -1039,6 +1093,171 @@ export default function App() {
         if (consecutiveErrors >= 10) {
           setPresetLoading(false);
           setPresetError("Connection lost or task invalid.");
+        } else {
+          setTimeout(check, 3000);
+        }
+      }
+    };
+    check();
+  };
+
+  // --- Video Generation Handler ---
+  const generateVideo = async () => {
+    if (!apiKey) {
+      setVideoError("Please enter your Wavespeed API Key first.");
+      return;
+    }
+    if (!videoImage) {
+      setVideoError("Please upload a reference image.");
+      return;
+    }
+    if (!videoFile) {
+      setVideoError("Please upload a reference video.");
+      return;
+    }
+
+    setVideoLoading(true);
+    setVideoError(null);
+    setVideoResultUrl(null);
+    setVideoStatus('queued');
+    setLogs([]);
+    addLog('Starting Kling 2.6 Motion Control generation...');
+    addLog(`Keep original sound: ${keepOriginalSound}`);
+
+    try {
+      const payload = {
+        character_orientation: "video",
+        image: videoImage,
+        keep_original_sound: keepOriginalSound,
+        video: videoFile
+      };
+
+      addLog("Sending payload...");
+
+      const submitResponse = await fetch('https://api.wavespeed.ai/api/v3/kwaivgi/kling-v2.6-std/motion-control', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!submitResponse.ok) {
+        const errData = await submitResponse.json();
+        const errMsg = errData.detail || errData.message || errData.error || JSON.stringify(errData);
+        throw new Error(errMsg);
+      }
+
+      const taskData = await submitResponse.json();
+      console.log('Full API Response:', taskData);
+
+      if (taskData.error) {
+        throw new Error(taskData.error);
+      }
+
+      let pollTarget = null;
+      
+      if (taskData.urls && taskData.urls.get) {
+        pollTarget = taskData.urls.get;
+        addLog("Using provided polling URL.");
+      } else {
+        const taskId = taskData.id || 
+                       taskData.task_id || 
+                       taskData.request_id || 
+                       taskData.job_id || 
+                       (taskData.data && taskData.data.id);
+        
+        if (taskId) {
+          pollTarget = `https://api.wavespeed.ai/api/v3/predictions/${taskId}/result`;
+          addLog(`Constructed polling URL for ID: ${taskId}`);
+        }
+      }
+
+      const immediateOutput = extractResultUrl(taskData);
+      if (immediateOutput) {
+        setVideoStatus('completed');
+        setVideoResultUrl(immediateOutput);
+        addLog("Task completed instantly.");
+        setVideoLoading(false);
+        return;
+      }
+
+      if (!pollTarget) {
+        throw new Error("Could not determine polling URL or find immediate output.");
+      }
+      
+      pollVideoStatus(pollTarget);
+
+    } catch (err) {
+      console.error(err);
+      setVideoError(err.message);
+      setVideoLoading(false);
+      setVideoStatus('failed');
+      addLog(`Error: ${err.message}`);
+    }
+  };
+
+  const pollVideoStatus = async (pollUrl) => {
+    const startTime = Date.now();
+    const MAX_DURATION = 10 * 60 * 1000; // 10 minutes for video
+    let consecutiveErrors = 0;
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    const check = async () => {
+      if (Date.now() - startTime > MAX_DURATION) {
+        setVideoLoading(false);
+        setVideoError("Operation timed out. Task may still be processing on the server.");
+        return;
+      }
+
+      try {
+        const response = await fetch(pollUrl, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+          }
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            console.warn("Task 404, retrying...");
+            throw new Error("Task not found yet");
+          }
+          throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        consecutiveErrors = 0;
+        
+        const currentStatus = data.status || (data.data && data.data.status);
+        setVideoStatus(currentStatus);
+        addLog(`Status: ${currentStatus}`);
+        
+        if (['succeeded', 'completed', 'SUCCESS'].includes(currentStatus)) {
+          const output = extractResultUrl(data);
+          if (output) {
+            setVideoResultUrl(output);
+            addLog("Video generation successful!");
+          } else {
+            setVideoError("Task complete but output missing.");
+          }
+          setVideoLoading(false);
+          return;
+        } else if (['failed', 'canceled', 'FAILURE'].includes(currentStatus)) {
+          setVideoLoading(false);
+          setVideoError(data.error || "Task failed.");
+          addLog("Task failed.");
+          return;
+        } else {
+          setTimeout(check, 500); // Poll every 0.5 seconds as in the example
+        }
+
+      } catch (err) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 10) {
+          setVideoLoading(false);
+          setVideoError("Connection lost or task invalid.");
         } else {
           setTimeout(check, 3000);
         }
@@ -2114,6 +2333,245 @@ export default function App() {
               </div>
             </div>
             </div>
+          </div>
+        ) : selectedSection === 'video' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* Left Panel: Video Controls */}
+            <div className="lg:col-span-4 space-y-6">
+              
+              {/* API Key Input */}
+              <div className="bg-slate-900/50 border border-slate-800 p-5 rounded-2xl shadow-xl">
+                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center">
+                  <Settings className="w-4 h-4 mr-2" /> Settings
+                </h2>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Wavespeed API Key</label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => handleSaveKey(e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Video Generation Controls */}
+              <div className="bg-slate-900/50 border border-slate-800 p-5 rounded-2xl shadow-xl">
+                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center">
+                  <Film className="w-4 h-4 mr-2" /> Kling 2.6 Motion Control
+                </h2>
+                
+                <div className="space-y-4">
+                  {/* Model Info */}
+                  <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3">
+                    <div className="flex items-center mb-2">
+                      <div className="p-2 rounded-md mr-3 bg-pink-500/10 text-pink-400">
+                        <Video size={16} />
+                      </div>
+                      <div className="text-sm font-medium text-slate-200">Kling 2.6 Motion Control</div>
+                    </div>
+                    <div className="text-xs text-slate-400">Apply motion from a reference video to a reference image.</div>
+                  </div>
+
+                  {/* Reference Image Upload */}
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">
+                      Reference Image <span className="text-indigo-400">(Required)</span>
+                    </label>
+                    {!videoImage ? (
+                      <div 
+                        onClick={() => videoImageRef.current?.click()}
+                        className="border-2 border-dashed border-slate-800 rounded-lg aspect-square flex flex-col items-center justify-center hover:bg-slate-800/50 hover:border-indigo-500/50 transition-all cursor-pointer group"
+                      >
+                        <ImageIcon className="w-8 h-8 text-slate-600 group-hover:text-indigo-400 mb-2" />
+                        <span className="text-xs text-slate-500 group-hover:text-indigo-400">Click to upload</span>
+                      </div>
+                    ) : (
+                      <div className="relative aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20 group">
+                        <img src={videoImage} alt="Reference image" className="w-full h-full object-cover" />
+                        <button 
+                          onClick={() => setVideoImage(null)}
+                          className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-1 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                    <input 
+                      type="file" 
+                      ref={videoImageRef}
+                      onChange={handleVideoImageUpload}
+                      accept="image/*"
+                      className="hidden" 
+                    />
+                  </div>
+
+                  {/* Reference Video Upload */}
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">
+                      Reference Video <span className="text-indigo-400">(Required)</span>
+                    </label>
+                    {!videoFile ? (
+                      <div 
+                        onClick={() => videoFileRef.current?.click()}
+                        className="border-2 border-dashed border-slate-800 rounded-lg aspect-video flex flex-col items-center justify-center hover:bg-slate-800/50 hover:border-indigo-500/50 transition-all cursor-pointer group"
+                      >
+                        <Video className="w-8 h-8 text-slate-600 group-hover:text-indigo-400 mb-2" />
+                        <span className="text-xs text-slate-500 group-hover:text-indigo-400">Click to upload</span>
+                        <span className="text-[10px] text-slate-600 mt-1">Max 100MB</span>
+                      </div>
+                    ) : (
+                      <div className="relative aspect-video rounded-lg overflow-hidden border border-slate-700 bg-black/20 group">
+                        <video 
+                          src={videoFileUrl || videoFile} 
+                          controls 
+                          className="w-full h-full object-cover"
+                        />
+                        <button 
+                          onClick={() => {
+                            setVideoFile(null);
+                            setVideoFileUrl(null);
+                            if (videoFileUrl) URL.revokeObjectURL(videoFileUrl);
+                          }}
+                          className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-1 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                    <input 
+                      type="file" 
+                      ref={videoFileRef}
+                      onChange={handleVideoFileUpload}
+                      accept="video/*"
+                      className="hidden" 
+                    />
+                  </div>
+
+                  {/* Keep Original Sound Option */}
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="keepOriginalSound"
+                      checked={keepOriginalSound}
+                      onChange={(e) => setKeepOriginalSound(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 focus:ring-2"
+                    />
+                    <label htmlFor="keepOriginalSound" className="text-xs text-slate-400 cursor-pointer">
+                      Keep Original Sound
+                    </label>
+                  </div>
+
+                  <button
+                    onClick={generateVideo}
+                    disabled={videoLoading || !apiKey || !videoImage || !videoFile}
+                    className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${
+                      videoLoading || !apiKey || !videoImage || !videoFile
+                        ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-500/20 active:scale-95'
+                    }`}
+                  >
+                    {videoLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Generate Video
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Logs Console */}
+              <div className="bg-black/40 border border-slate-800/50 p-4 rounded-xl h-48 overflow-y-auto font-mono text-xs">
+                <div className="text-slate-500 mb-2 sticky top-0 bg-transparent uppercase tracking-wider text-[10px]">Activity Log</div>
+                {logs.length === 0 && <span className="text-slate-700 italic">Ready to generate...</span>}
+                {logs.map((log, i) => (
+                  <div key={i} className="text-slate-400 mb-1 border-b border-slate-800/30 pb-1 last:border-0">
+                    {log}
+                  </div>
+                ))}
+              </div>
+
+            </div>
+
+            {/* Right Panel: Output */}
+            <div className="lg:col-span-8">
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl shadow-xl h-full min-h-[500px] flex flex-col relative overflow-hidden group">
+                
+                {/* Output Header */}
+                <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 bg-gradient-to-b from-black/60 to-transparent">
+                  <div className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-xs font-mono text-slate-300">
+                    OUTPUT PREVIEW
+                  </div>
+                  {videoStatus && (
+                     <div className={`px-3 py-1 rounded-full text-xs font-bold border backdrop-blur-md flex items-center ${
+                       videoStatus === 'succeeded' || videoStatus === 'completed' || videoStatus === 'SUCCESS' ? 'bg-green-500/20 border-green-500/30 text-green-400' :
+                       videoStatus === 'failed' || videoStatus === 'FAILURE' ? 'bg-red-500/20 border-red-500/30 text-red-400' :
+                       'bg-blue-500/20 border-blue-500/30 text-blue-400'
+                     }`}>
+                       {videoStatus === 'succeeded' || videoStatus === 'completed' || videoStatus === 'SUCCESS' ? <CheckCircle2 className="w-3 h-3 mr-1" /> : 
+                        videoStatus === 'failed' || videoStatus === 'FAILURE' ? <AlertCircle className="w-3 h-3 mr-1" /> : 
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                       {videoStatus.toUpperCase()}
+                     </div>
+                  )}
+                </div>
+
+                {/* Main Canvas Area */}
+                <div className="flex-1 flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800/30 via-slate-900 to-slate-950">
+                  
+                  {videoError && (
+                    <div className="text-center max-w-md p-6 bg-red-500/10 border border-red-500/20 rounded-xl">
+                      <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+                      <h3 className="text-red-400 font-medium mb-1">Generation Failed</h3>
+                      <p className="text-red-400/70 text-sm">{videoError}</p>
+                    </div>
+                  )}
+
+                  {!videoResultUrl && !videoLoading && !videoError && (
+                    <div className="text-center opacity-30">
+                     <div className="w-24 h-24 border-2 border-dashed border-slate-500 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                       <Film className="w-8 h-8 text-slate-500" />
+                     </div>
+                     <p className="text-slate-400">Upload image and video to begin</p>
+                    </div>
+                  )}
+
+                  {videoLoading && (
+                   <div className="text-center">
+                     <div className="relative w-20 h-20 mx-auto mb-6">
+                       <div className="absolute inset-0 border-4 border-indigo-500/30 rounded-full"></div>
+                       <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                     </div>
+                     <p className="text-indigo-400 animate-pulse font-medium">Generating video...</p>
+                     <p className="text-slate-500 text-xs mt-2">This may take a few moments</p>
+                   </div>
+                  )}
+
+                  {videoResultUrl && !videoLoading && (
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      <video 
+                        src={videoResultUrl} 
+                        controls 
+                        autoPlay 
+                        loop 
+                        className="max-w-full max-h-[70vh] rounded-lg shadow-2xl shadow-black/50 border border-slate-800"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            
           </div>
         ) : (
           <div className="text-center py-20">
