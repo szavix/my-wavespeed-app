@@ -198,12 +198,24 @@ export default function App() {
   const [img2txt2imgResultUrl, setImg2txt2imgResultUrl] = useState(null);
   const [img2txt2imgError, setImg2txt2imgError] = useState(null);
   
+  // Video section specific state (Kling 2.6 Motion Control)
+  const [videoImage, setVideoImage] = useState(null);
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoCharacterOrientation, setVideoCharacterOrientation] = useState('video');
+  const [videoKeepOriginalSound, setVideoKeepOriginalSound] = useState(true);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoStatus, setVideoStatus] = useState(null);
+  const [videoResultUrl, setVideoResultUrl] = useState(null);
+  const [videoError, setVideoError] = useState(null);
+  
   const fileInputRef = useRef(null);
   const igFirstImageRef = useRef(null);
   const igSecondImagesRef = useRef(null);
   const presetFileInputRef = useRef(null);
   const img2txt2imgCaptionImageRef = useRef(null);
   const img2txt2imgReferenceImagesRef = useRef(null);
+  const videoImageRef = useRef(null);
+  const videoFileRef = useRef(null);
 
   // Persistence & Environment Variables
   useEffect(() => {
@@ -1519,6 +1531,193 @@ export default function App() {
           setImg2txt2imgError("Connection lost or task invalid.");
         } else {
           setTimeout(check, 3000);
+        }
+      }
+    };
+    check();
+  };
+
+  // --- Video Section Handlers (Kling 2.6 Motion Control) ---
+  const handleVideoImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.size > 10 * 1024 * 1024) {
+      setVideoError(`File ${file.name} is too large.`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setVideoImage(reader.result);
+      setVideoError(null);
+      addLog(`Video image loaded: ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+    
+    if (videoImageRef.current) videoImageRef.current.value = '';
+  };
+
+  const handleVideoFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.size > 100 * 1024 * 1024) {
+      setVideoError(`File ${file.name} is too large. Max 100MB.`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setVideoFile(reader.result);
+      setVideoError(null);
+      addLog(`Video file loaded: ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+    
+    if (videoFileRef.current) videoFileRef.current.value = '';
+  };
+
+  const generateVideo = async () => {
+    if (!apiKey) {
+      setVideoError("Please enter your Wavespeed API Key first.");
+      return;
+    }
+    if (!videoImage) {
+      setVideoError("Please upload a reference image.");
+      return;
+    }
+    if (!videoFile) {
+      setVideoError("Please upload a motion reference video.");
+      return;
+    }
+
+    setVideoLoading(true);
+    setVideoError(null);
+    setVideoResultUrl(null);
+    setVideoStatus('queued');
+    setLogs([]);
+    addLog("Starting Kling 2.6 Motion Control job...");
+    addLog(`Character Orientation: ${videoCharacterOrientation}`);
+    addLog(`Keep Original Sound: ${videoKeepOriginalSound}`);
+
+    try {
+      const payload = {
+        character_orientation: videoCharacterOrientation,
+        image: videoImage,
+        keep_original_sound: videoKeepOriginalSound,
+        video: videoFile
+      };
+
+      addLog("Sending payload to Kling 2.6 Motion Control...");
+
+      const submitResponse = await fetch('https://api.wavespeed.ai/api/v3/kwaivgi/kling-v2.6-std/motion-control', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!submitResponse.ok) {
+        const errData = await submitResponse.json();
+        const errMsg = errData.detail || errData.message || errData.error || JSON.stringify(errData);
+        throw new Error(errMsg);
+      }
+
+      const taskData = await submitResponse.json();
+      console.log('Full API Response:', taskData);
+
+      if (taskData.error) {
+         throw new Error(taskData.error);
+      }
+
+      const taskId = taskData.id || 
+                     taskData.task_id || 
+                     taskData.request_id || 
+                     taskData.job_id || 
+                     (taskData.data && taskData.data.id);
+      
+      if (taskId) {
+        addLog(`Task submitted. ID: ${taskId}`);
+        const pollUrl = `https://api.wavespeed.ai/api/v3/predictions/${taskId}/result`;
+        pollVideoStatus(pollUrl);
+      } else {
+        throw new Error("Could not get task ID from response.");
+      }
+
+    } catch (err) {
+      console.error(err);
+      setVideoError(err.message);
+      setVideoLoading(false);
+      setVideoStatus('failed');
+      addLog(`Error: ${err.message}`);
+    }
+  };
+
+  const pollVideoStatus = async (pollUrl) => {
+    const startTime = Date.now();
+    const MAX_DURATION = 10 * 60 * 1000; // 10 minutes for video generation
+    let consecutiveErrors = 0;
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    const check = async () => {
+      if (Date.now() - startTime > MAX_DURATION) {
+        setVideoLoading(false);
+        setVideoError("Operation timed out. Task may still be processing on the server.");
+        return;
+      }
+
+      try {
+        const response = await fetch(pollUrl, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+          }
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+             console.warn("Task 404, retrying...");
+             throw new Error("Task not found yet");
+          }
+          throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        consecutiveErrors = 0; 
+        
+        const currentStatus = data.status || (data.data && data.data.status);
+        setVideoStatus(currentStatus);
+        addLog(`Status: ${currentStatus}`);
+        
+        if (['succeeded', 'completed', 'SUCCESS'].includes(currentStatus)) {
+          const output = extractResultUrl(data);
+          if (output) {
+            setVideoResultUrl(output);
+            addLog("Video generation successful!");
+          } else {
+            setVideoError("Task complete but output missing.");
+          }
+          setVideoLoading(false);
+          return; 
+        } else if (['failed', 'canceled', 'FAILURE'].includes(currentStatus)) {
+          setVideoLoading(false);
+          setVideoError(data.error || "Task failed.");
+          addLog("Task failed.");
+          return; 
+        } else {
+          setTimeout(check, 500); // Poll every 0.5 seconds as per documentation
+        }
+
+      } catch (err) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 10) {
+          setVideoLoading(false);
+          setVideoError("Connection lost or task invalid.");
+        } else {
+          setTimeout(check, 500);
         }
       }
     };
@@ -2997,6 +3196,236 @@ export default function App() {
               </div>
             </div>
           </div>
+            
+          </div>
+        ) : selectedSection === 'video' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* Left Panel: Video Controls */}
+            <div className="lg:col-span-4 space-y-6">
+              
+              {/* Model Info Card */}
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl shadow-xl p-5">
+                <div className="flex items-center mb-4">
+                  <div className="p-2 rounded-md mr-3 bg-pink-500/10 text-pink-400">
+                    <Film size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Kling 2.6 Motion Control</h3>
+                    <p className="text-xs text-slate-500">Transfer motion from video to image</p>
+                  </div>
+                </div>
+                
+                <p className="text-slate-400 text-sm mb-4">
+                  Upload a reference image and a motion video. The model will apply the motion from the video to your image.
+                </p>
+
+                {/* Reference Image Upload */}
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-500 mb-2">
+                    Reference Image <span className="text-pink-400 ml-1">(Required)</span>
+                  </label>
+                  
+                  {videoImage ? (
+                    <div className="relative group aspect-video rounded-lg overflow-hidden border border-slate-700 bg-black/20">
+                      <img src={videoImage} alt="Reference" className="w-full h-full object-cover" />
+                      <button 
+                        onClick={() => setVideoImage(null)}
+                        className="absolute top-2 right-2 bg-black/60 hover:bg-red-500/80 text-white p-1 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => videoImageRef.current?.click()}
+                      className="cursor-pointer border-2 border-dashed border-slate-800 rounded-lg aspect-video flex flex-col items-center justify-center hover:bg-slate-800/50 hover:border-pink-500/50 transition-all group"
+                    >
+                      <ImagePlus className="w-8 h-8 text-slate-600 group-hover:text-pink-400" />
+                      <span className="text-xs text-slate-600 group-hover:text-pink-400 mt-2">Upload Image</span>
+                    </div>
+                  )}
+                  
+                  <input 
+                    type="file" 
+                    ref={videoImageRef}
+                    onChange={handleVideoImageUpload}
+                    accept="image/*"
+                    className="hidden" 
+                  />
+                </div>
+
+                {/* Motion Video Upload */}
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-500 mb-2">
+                    Motion Reference Video <span className="text-pink-400 ml-1">(Required)</span>
+                  </label>
+                  
+                  {videoFile ? (
+                    <div className="relative group aspect-video rounded-lg overflow-hidden border border-slate-700 bg-black/20">
+                      <video src={videoFile} className="w-full h-full object-cover" muted autoPlay loop />
+                      <button 
+                        onClick={() => setVideoFile(null)}
+                        className="absolute top-2 right-2 bg-black/60 hover:bg-red-500/80 text-white p-1 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => videoFileRef.current?.click()}
+                      className="cursor-pointer border-2 border-dashed border-slate-800 rounded-lg aspect-video flex flex-col items-center justify-center hover:bg-slate-800/50 hover:border-pink-500/50 transition-all group"
+                    >
+                      <Video className="w-8 h-8 text-slate-600 group-hover:text-pink-400" />
+                      <span className="text-xs text-slate-600 group-hover:text-pink-400 mt-2">Upload Video</span>
+                    </div>
+                  )}
+                  
+                  <input 
+                    type="file" 
+                    ref={videoFileRef}
+                    onChange={handleVideoFileUpload}
+                    accept="video/*"
+                    className="hidden" 
+                  />
+                </div>
+
+                {/* Character Orientation */}
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-500 mb-2">Character Orientation</label>
+                  <select
+                    value={videoCharacterOrientation}
+                    onChange={(e) => setVideoCharacterOrientation(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-pink-500"
+                  >
+                    <option value="video">Video (Match video orientation)</option>
+                    <option value="image">Image (Match image orientation)</option>
+                  </select>
+                </div>
+
+                {/* Keep Original Sound */}
+                <div className="mb-6">
+                  <label className="flex items-center cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={videoKeepOriginalSound}
+                        onChange={(e) => setVideoKeepOriginalSound(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div className={`w-10 h-6 rounded-full transition-colors ${videoKeepOriginalSound ? 'bg-pink-500' : 'bg-slate-700'}`}>
+                        <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${videoKeepOriginalSound ? 'translate-x-4' : ''}`}></div>
+                      </div>
+                    </div>
+                    <span className="ml-3 text-sm text-slate-300">Keep Original Sound</span>
+                  </label>
+                </div>
+
+                {/* Generate Button */}
+                <button
+                  onClick={generateVideo}
+                  disabled={videoLoading || !apiKey || !videoImage || !videoFile}
+                  className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${
+                    videoLoading || !apiKey || !videoImage || !videoFile
+                      ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg shadow-pink-500/20 active:scale-95'
+                  }`}
+                >
+                  {videoLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 mr-2" />
+                      Generate Video
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Logs Console */}
+              <div className="bg-black/40 border border-slate-800/50 p-4 rounded-xl h-48 overflow-y-auto font-mono text-xs">
+                <div className="text-slate-500 mb-2 sticky top-0 bg-transparent uppercase tracking-wider text-[10px]">Activity Log</div>
+                {logs.length === 0 && <span className="text-slate-700 italic">Ready to generate...</span>}
+                {logs.map((log, i) => (
+                  <div key={i} className="text-slate-400 mb-1 border-b border-slate-800/30 pb-1 last:border-0">
+                    {log}
+                  </div>
+                ))}
+              </div>
+
+            </div>
+
+            {/* Right Panel: Output */}
+            <div className="lg:col-span-8">
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl shadow-xl h-full min-h-[500px] flex flex-col relative overflow-hidden group">
+                
+                {/* Output Header */}
+                <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 bg-gradient-to-b from-black/60 to-transparent">
+                  <div className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-xs font-mono text-slate-300">
+                    VIDEO OUTPUT
+                  </div>
+                  {videoStatus && (
+                     <div className={`px-3 py-1 rounded-full text-xs font-bold border backdrop-blur-md flex items-center ${
+                       videoStatus === 'succeeded' || videoStatus === 'completed' || videoStatus === 'SUCCESS' ? 'bg-green-500/20 border-green-500/30 text-green-400' :
+                       videoStatus === 'failed' || videoStatus === 'FAILURE' ? 'bg-red-500/20 border-red-500/30 text-red-400' :
+                       'bg-pink-500/20 border-pink-500/30 text-pink-400'
+                     }`}>
+                       {videoStatus === 'succeeded' || videoStatus === 'completed' || videoStatus === 'SUCCESS' ? <CheckCircle2 className="w-3 h-3 mr-1" /> : 
+                        videoStatus === 'failed' || videoStatus === 'FAILURE' ? <AlertCircle className="w-3 h-3 mr-1" /> : 
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                       {videoStatus.toUpperCase()}
+                     </div>
+                  )}
+                </div>
+
+                {/* Main Canvas Area */}
+                <div className="flex-1 flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800/30 via-slate-900 to-slate-950">
+                  
+                  {videoError && (
+                    <div className="text-center max-w-md p-6 bg-red-500/10 border border-red-500/20 rounded-xl">
+                      <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+                      <h3 className="text-red-400 font-medium mb-1">Generation Failed</h3>
+                      <p className="text-red-400/70 text-sm">{videoError}</p>
+                    </div>
+                  )}
+
+                  {!videoResultUrl && !videoLoading && !videoError && (
+                    <div className="text-center opacity-30">
+                     <div className="w-24 h-24 border-2 border-dashed border-slate-500 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                       <Film className="w-8 h-8 text-slate-500" />
+                     </div>
+                     <p className="text-slate-400">Upload image and video, then generate</p>
+                    </div>
+                  )}
+
+                  {videoLoading && (
+                   <div className="text-center">
+                     <div className="relative w-20 h-20 mx-auto mb-6">
+                       <div className="absolute inset-0 border-4 border-pink-500/30 rounded-full"></div>
+                       <div className="absolute inset-0 border-4 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+                     </div>
+                     <p className="text-pink-400 animate-pulse font-medium">Generating your video...</p>
+                     <p className="text-slate-500 text-xs mt-2">Video generation may take several minutes</p>
+                   </div>
+                  )}
+
+                  {videoResultUrl && !videoLoading && (
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      <video 
+                        src={videoResultUrl} 
+                        controls
+                        autoPlay
+                        loop
+                        className="max-w-full max-h-[70vh] rounded-lg shadow-2xl shadow-black/50 border border-slate-800"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
             
           </div>
         ) : (
