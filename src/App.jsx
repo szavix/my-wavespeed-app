@@ -136,7 +136,7 @@ export default function App() {
   const [igSecondImages, setIgSecondImages] = useState([]);
   const [igSelectedModel, setIgSelectedModel] = useState('google/nano-banana-pro/edit');
   const [igAppendText, setIgAppendText] = useState({ blackNails: false, blackPhoneCase: false }); // Track both options independently
-  const [igPrompt, setIgPrompt] = useState('refer to face and hair from the first image, and the pose and background from the second image.'); // Editable prompt
+  const [igPrompt, setIgPrompt] = useState('refer to face and hair from the first image, and the pose, outfit and background from the second image.'); // Editable prompt
   const [igResults, setIgResults] = useState([]); // Array of result URLs from multiple jobs
   const [igLoading, setIgLoading] = useState(false);
   const [igJobStatuses, setIgJobStatuses] = useState([]); // Array of status objects for each job
@@ -644,7 +644,7 @@ export default function App() {
 
   // Build default prompt based on append text options
   const buildDefaultIgPrompt = () => {
-    let basePrompt = "refer to face and hair from the first image, and the pose and background from the second image.";
+    let basePrompt = "refer to face and hair from the first image, and the pose, outfit and background from the second image.";
     const appendParts = [];
     if (igAppendText.blackNails) {
       appendParts.push("black nails");
@@ -663,7 +663,7 @@ export default function App() {
   };
 
   const updatePromptFromAppendText = (appendTextState) => {
-    const basePrompt = "refer to face and hair from the first image, and the pose and background from the second image.";
+    const basePrompt = "refer to face and hair from the first image, and the pose, outfit and background from the second image.";
     const appendParts = [];
     if (appendTextState.blackNails) {
       appendParts.push("black nails");
