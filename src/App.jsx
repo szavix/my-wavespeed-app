@@ -203,6 +203,8 @@ export default function App() {
   const [videoFile, setVideoFile] = useState(null);
   const [videoCharacterOrientation, setVideoCharacterOrientation] = useState('video');
   const [videoKeepOriginalSound, setVideoKeepOriginalSound] = useState(true);
+  const [videoPrompt, setVideoPrompt] = useState('');
+  const [videoNegativePrompt, setVideoNegativePrompt] = useState('');
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoStatus, setVideoStatus] = useState(null);
   const [videoResultUrl, setVideoResultUrl] = useState(null);
@@ -1600,6 +1602,8 @@ export default function App() {
     addLog("Starting Kling 2.6 Motion Control job...");
     addLog(`Character Orientation: ${videoCharacterOrientation}`);
     addLog(`Keep Original Sound: ${videoKeepOriginalSound}`);
+    if (videoPrompt) addLog(`Prompt: ${videoPrompt}`);
+    if (videoNegativePrompt) addLog(`Negative Prompt: ${videoNegativePrompt}`);
 
     try {
       const payload = {
@@ -1608,6 +1612,14 @@ export default function App() {
         keep_original_sound: videoKeepOriginalSound,
         video: videoFile
       };
+
+      // Add optional prompts if provided
+      if (videoPrompt.trim()) {
+        payload.prompt = videoPrompt.trim();
+      }
+      if (videoNegativePrompt.trim()) {
+        payload.negative_prompt = videoNegativePrompt.trim();
+      }
 
       addLog("Sending payload to Kling 2.6 Motion Control...");
 
@@ -3301,6 +3313,34 @@ export default function App() {
                     <option value="video">Video (Match video orientation)</option>
                     <option value="image">Image (Match image orientation)</option>
                   </select>
+                </div>
+
+                {/* Positive Prompt */}
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-500 mb-2">
+                    Positive Prompt <span className="text-slate-600 ml-1">(Optional)</span>
+                  </label>
+                  <textarea
+                    value={videoPrompt}
+                    onChange={(e) => setVideoPrompt(e.target.value)}
+                    placeholder="Describe what you want to see in the generated video..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-pink-500 resize-none"
+                    rows={3}
+                  />
+                </div>
+
+                {/* Negative Prompt */}
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-500 mb-2">
+                    Negative Prompt <span className="text-slate-600 ml-1">(Optional)</span>
+                  </label>
+                  <textarea
+                    value={videoNegativePrompt}
+                    onChange={(e) => setVideoNegativePrompt(e.target.value)}
+                    placeholder="Describe what you want to avoid in the generated video..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-pink-500 resize-none"
+                    rows={3}
+                  />
                 </div>
 
                 {/* Keep Original Sound */}
