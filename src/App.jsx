@@ -128,10 +128,24 @@ function PasswordGate({ children }) {
             <p className="text-slate-400 text-sm mt-1">Enter the password to continue</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
+            {/* Hidden username field so browsers recognize this as a login form */}
+            <input
+              type="text"
+              name="username"
+              autoComplete="username"
+              value="admin"
+              readOnly
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
             <div>
               <input
                 type="password"
+                name="password"
+                autoComplete="current-password"
+                id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
