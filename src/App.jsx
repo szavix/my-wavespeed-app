@@ -242,7 +242,6 @@ export default function App() {
   });
 
   // IG Picture specific state
-  const [igFirstImage, setIgFirstImage] = useState(null);
   const [igSecondImages, setIgSecondImages] = useState([]);
   const [igSelectedModel, setIgSelectedModel] = useState('google/nano-banana-pro/edit');
   const [igAppendText, setIgAppendText] = useState({ blackNails: false, blackPhoneCase: false }); // Track both options independently
@@ -298,7 +297,6 @@ export default function App() {
 
   const flattenImageMap = (imageMap) => Object.values(imageMap).flat();
   const customOutfitImages = flattenImageMap(customOutfitImageMap);
-  const igOutfitImages = flattenImageMap(igOutfitImageMap);
   const presetOutfitImages = flattenImageMap(presetOutfitImageMap);
   const img2txt2imgOutfitImages = flattenImageMap(img2txt2imgOutfitImageMap);
   const customReferenceDbImages = flattenImageMap(customReferenceDbImageMap);
@@ -332,7 +330,6 @@ export default function App() {
   const [videoError, setVideoError] = useState(null);
 
   const fileInputRef = useRef(null);
-  const igFirstImageRef = useRef(null);
   const igSecondImagesRef = useRef(null);
   const presetFileInputRef = useRef(null);
   const img2txt2imgCaptionImageRef = useRef(null);
@@ -1299,25 +1296,6 @@ export default function App() {
   };
 
   // --- IG Picture Handlers ---
-  const handleIgFirstImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      setError(`File ${file.name} is too large.`);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setIgFirstImage(reader.result);
-      setError(null);
-    };
-    reader.readAsDataURL(file);
-
-    if (igFirstImageRef.current) igFirstImageRef.current.value = '';
-  };
-
   const handleIgSecondImagesUpload = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -1397,12 +1375,13 @@ export default function App() {
 
 
   const generateIgPicture = async () => {
+    const igPrimaryReferenceImage = igReferenceDbImages[0] || null;
     if (!apiKey) {
       setError("Please enter your Wavespeed API Key first.");
       return;
     }
-    if (!igFirstImage) {
-      setError("Please upload the first image.");
+    if (!igPrimaryReferenceImage) {
+      setError("Please select a reference image from Notion (first image).");
       return;
     }
     if (igSecondImages.length === 0) {
@@ -1429,7 +1408,7 @@ export default function App() {
 
     // Create jobs for each second image
     const jobs = igSecondImages.map((secondImage, index) => {
-      const images = [igFirstImage, secondImage, ...igReferenceDbImages, ...igOutfitImages];
+      const images = [igPrimaryReferenceImage, secondImage];
 
       let payload = {};
       if (igSelectedModel.includes('nano-banana-pro/edit')) {
@@ -3058,35 +3037,21 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* First Image Upload (Single) */}
+                    {/* First Image Source (Notion Reference) */}
                     <div>
-                      <label className="block text-xs text-slate-500 mb-1">First Image (Single)</label>
-                      {!igFirstImage ? (
-                        <div
-                          onClick={() => igFirstImageRef.current?.click()}
-                          className="border-2 border-dashed border-slate-800 rounded-lg aspect-square flex flex-col items-center justify-center hover:bg-slate-800/50 hover:border-indigo-500/50 transition-all cursor-pointer group"
-                        >
-                          <Upload className="w-8 h-8 text-slate-600 group-hover:text-indigo-400 mb-2" />
-                          <span className="text-xs text-slate-500 group-hover:text-indigo-400">Click to upload</span>
+                      <label className="block text-xs text-slate-500 mb-1">First Image (from Notion Reference)</label>
+                      {igReferenceDbImages[0] ? (
+                        <div className="relative aspect-square rounded-lg overflow-hidden border border-indigo-500/40 bg-black/20">
+                          <img src={igReferenceDbImages[0]} alt="First reference image" className="w-full h-full object-cover" />
+                          <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
+                            FIRST IMAGE
+                          </span>
                         </div>
                       ) : (
-                        <div className="relative aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20 group">
-                          <img src={igFirstImage} alt="First image" className="w-full h-full object-cover" />
-                          <button
-                            onClick={() => setIgFirstImage(null)}
-                            className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-1 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                        <div className="border border-dashed border-slate-800 rounded-lg p-3 text-xs text-slate-500">
+                          Choose at least one item in <span className="text-indigo-300">Reference Image (from Notion)</span>. The first selected image is used as the first image.
                         </div>
                       )}
-                      <input
-                        type="file"
-                        ref={igFirstImageRef}
-                        onChange={handleIgFirstImageUpload}
-                        accept="image/*"
-                        className="hidden"
-                      />
                     </div>
 
                     {/* Second Images Upload (Multiple) */}
@@ -3127,8 +3092,8 @@ export default function App() {
                       />
 
                       <div className="text-[10px] text-slate-500 flex justify-between">
-                        <span>{igSecondImages.length} second image(s) + {igReferenceDbImages.length} reference image(s) + {igOutfitImages.length} outfit image(s)</span>
-                        {(igSecondImages.length > 0 || igReferenceDbImages.length > 0 || igOutfitImages.length > 0) && (
+                        <span>{igSecondImages.length} second image(s) + {igReferenceDbImages.length} reference image(s)</span>
+                        {(igSecondImages.length > 0 || igReferenceDbImages.length > 0) && (
                           <button
                             onClick={() => {
                               setIgSecondImages([]);
@@ -3146,12 +3111,11 @@ export default function App() {
                     </div>
 
                     {renderReferenceSelector('ig-picture', selectedIgReferenceDbIds)}
-                    {renderOutfitSelector('ig-picture', selectedIgOutfitIds)}
 
                     <button
                       onClick={generateIgPicture}
-                      disabled={igLoading || !apiKey || !igFirstImage || igSecondImages.length === 0}
-                      className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${igLoading || !apiKey || !igFirstImage || igSecondImages.length === 0
+                      disabled={igLoading || !apiKey || igReferenceDbImages.length === 0 || igSecondImages.length === 0}
+                      className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${igLoading || !apiKey || igReferenceDbImages.length === 0 || igSecondImages.length === 0
                         ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
                         : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-500/20 active:scale-95'
                         }`}
