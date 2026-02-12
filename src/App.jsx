@@ -2462,7 +2462,7 @@ export default function App() {
                         {selectedModel.id.includes('seedance') && <span className="text-indigo-400 ml-1">(Required)</span>}
                       </label>
 
-                      {/* Grid of uploaded images */}
+                      {/* Grid of attached images (manual + Notion selections) */}
                       <div className="grid grid-cols-3 gap-2 mb-2">
                         {referenceImages.map((img, idx) => (
                           <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20">
@@ -2473,6 +2473,22 @@ export default function App() {
                             >
                               <X className="w-3 h-3" />
                             </button>
+                          </div>
+                        ))}
+                        {customReferenceDbImages.map((img, idx) => (
+                          <div key={`custom-ref-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-indigo-500/30 bg-black/20">
+                            <img src={img} alt={`Notion reference ${idx + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
+                              REF
+                            </span>
+                          </div>
+                        ))}
+                        {customOutfitImages.map((img, idx) => (
+                          <div key={`custom-outfit-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-violet-500/30 bg-black/20">
+                            <img src={img} alt={`Outfit reference ${idx + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-violet-950/80 text-violet-200 border border-violet-500/30">
+                              OUTFIT
+                            </span>
                           </div>
                         ))}
 
@@ -3143,7 +3159,7 @@ export default function App() {
                         <span className="text-indigo-400 ml-1">(Required for Edit)</span>
                       </label>
 
-                      {/* Grid of uploaded images */}
+                      {/* Grid of attached images (manual + Notion selections) */}
                       <div className="grid grid-cols-3 gap-2 mb-2">
                         {presetReferenceImages.map((img, idx) => (
                           <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20">
@@ -3154,6 +3170,22 @@ export default function App() {
                             >
                               <X className="w-3 h-3" />
                             </button>
+                          </div>
+                        ))}
+                        {presetReferenceDbImages.map((img, idx) => (
+                          <div key={`preset-ref-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-indigo-500/30 bg-black/20">
+                            <img src={img} alt={`Notion reference ${idx + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
+                              REF
+                            </span>
+                          </div>
+                        ))}
+                        {presetOutfitImages.map((img, idx) => (
+                          <div key={`preset-outfit-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-violet-500/30 bg-black/20">
+                            <img src={img} alt={`Outfit reference ${idx + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-violet-950/80 text-violet-200 border border-violet-500/30">
+                              OUTFIT
+                            </span>
                           </div>
                         ))}
 
@@ -3543,7 +3575,7 @@ export default function App() {
                         <span className="text-indigo-400 ml-1">(Required for Edit)</span>
                       </label>
 
-                      {/* Grid of uploaded images */}
+                      {/* Grid of attached images (manual + Notion selections) */}
                       <div className="grid grid-cols-3 gap-2 mb-2">
                         {img2txt2imgReferenceImages.map((img, idx) => (
                           <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20">
@@ -3554,6 +3586,22 @@ export default function App() {
                             >
                               <X className="w-3 h-3" />
                             </button>
+                          </div>
+                        ))}
+                        {img2txt2imgReferenceDbImages.map((img, idx) => (
+                          <div key={`img2txt2img-ref-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-indigo-500/30 bg-black/20">
+                            <img src={img} alt={`Notion reference ${idx + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
+                              REF
+                            </span>
+                          </div>
+                        ))}
+                        {img2txt2imgOutfitImages.map((img, idx) => (
+                          <div key={`img2txt2img-outfit-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-violet-500/30 bg-black/20">
+                            <img src={img} alt={`Outfit reference ${idx + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-violet-950/80 text-violet-200 border border-violet-500/30">
+                              OUTFIT
+                            </span>
                           </div>
                         ))}
 
