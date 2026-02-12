@@ -283,8 +283,27 @@ export default function App() {
   const [notionOutfits, setNotionOutfits] = useState([]);
   const [outfitsLoading, setOutfitsLoading] = useState(false);
   const [outfitsError, setOutfitsError] = useState(null);
-  const [selectedOutfitId, setSelectedOutfitId] = useState(null);
-  const [outfitImagesLoading, setOutfitImagesLoading] = useState(false);
+  const [notionReferenceImages, setNotionReferenceImages] = useState([]);
+  const [referenceImagesLoading, setReferenceImagesLoading] = useState(false);
+  const [referenceImagesError, setReferenceImagesError] = useState(null);
+  const [outfitImagesLoadingSection, setOutfitImagesLoadingSection] = useState(null);
+  const [referenceImagesLoadingSection, setReferenceImagesLoadingSection] = useState(null);
+  const [selectedCustomOutfitId, setSelectedCustomOutfitId] = useState(null);
+  const [selectedIgOutfitId, setSelectedIgOutfitId] = useState(null);
+  const [selectedPresetOutfitId, setSelectedPresetOutfitId] = useState(null);
+  const [selectedImg2txt2imgOutfitId, setSelectedImg2txt2imgOutfitId] = useState(null);
+  const [selectedCustomReferenceDbId, setSelectedCustomReferenceDbId] = useState(null);
+  const [selectedIgReferenceDbId, setSelectedIgReferenceDbId] = useState(null);
+  const [selectedPresetReferenceDbId, setSelectedPresetReferenceDbId] = useState(null);
+  const [selectedImg2txt2imgReferenceDbId, setSelectedImg2txt2imgReferenceDbId] = useState(null);
+  const [customOutfitImages, setCustomOutfitImages] = useState([]);
+  const [igOutfitImages, setIgOutfitImages] = useState([]);
+  const [presetOutfitImages, setPresetOutfitImages] = useState([]);
+  const [img2txt2imgOutfitImages, setImg2txt2imgOutfitImages] = useState([]);
+  const [customReferenceDbImages, setCustomReferenceDbImages] = useState([]);
+  const [igReferenceDbImages, setIgReferenceDbImages] = useState([]);
+  const [presetReferenceDbImages, setPresetReferenceDbImages] = useState([]);
+  const [img2txt2imgReferenceDbImages, setImg2txt2imgReferenceDbImages] = useState([]);
 
   // Img2Txt2Img specific state
   const [img2txt2imgCaptionImage, setImg2txt2imgCaptionImage] = useState(null);
@@ -378,16 +397,99 @@ export default function App() {
     }
   };
 
+  const fetchNotionReferenceImages = async () => {
+    setReferenceImagesLoading(true);
+    setReferenceImagesError(null);
+    try {
+      const response = await fetch('/api/reference-images');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setNotionReferenceImages(data.referenceImages || []);
+    } catch (err) {
+      console.error('Failed to fetch reference images:', err);
+      setReferenceImagesError(err.message);
+    } finally {
+      setReferenceImagesLoading(false);
+    }
+  };
+
   // Fetch outfits on mount
   useEffect(() => {
     fetchNotionOutfits();
+    fetchNotionReferenceImages();
   }, []);
 
-  // Select an outfit: fetch its images as base64 and add to preset reference images
-  const handleOutfitSelect = async (outfit) => {
-    if (selectedOutfitId === outfit.id) {
-      // Deselect
-      setSelectedOutfitId(null);
+  const loadOutfitImages = async (outfit) => {
+    const base64Images = [];
+    for (const imageUrl of outfit.images || []) {
+      const proxyResponse = await fetch(`/api/notion-image?url=${encodeURIComponent(imageUrl)}`);
+      if (!proxyResponse.ok) {
+        const errData = await proxyResponse.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to fetch outfit image');
+      }
+      const data = await proxyResponse.json();
+      base64Images.push(data.dataUrl);
+    }
+    return base64Images;
+  };
+
+  const outfitSectionConfig = {
+    custom: {
+      getSelectedId: () => selectedCustomOutfitId,
+      setSelectedId: setSelectedCustomOutfitId,
+      setImages: setCustomOutfitImages
+    },
+    'ig-picture': {
+      getSelectedId: () => selectedIgOutfitId,
+      setSelectedId: setSelectedIgOutfitId,
+      setImages: setIgOutfitImages
+    },
+    'preset-picture': {
+      getSelectedId: () => selectedPresetOutfitId,
+      setSelectedId: setSelectedPresetOutfitId,
+      setImages: setPresetOutfitImages
+    },
+    img2txt2img: {
+      getSelectedId: () => selectedImg2txt2imgOutfitId,
+      setSelectedId: setSelectedImg2txt2imgOutfitId,
+      setImages: setImg2txt2imgOutfitImages
+    }
+  };
+
+  const referenceSectionConfig = {
+    custom: {
+      getSelectedId: () => selectedCustomReferenceDbId,
+      setSelectedId: setSelectedCustomReferenceDbId,
+      setImages: setCustomReferenceDbImages
+    },
+    'ig-picture': {
+      getSelectedId: () => selectedIgReferenceDbId,
+      setSelectedId: setSelectedIgReferenceDbId,
+      setImages: setIgReferenceDbImages
+    },
+    'preset-picture': {
+      getSelectedId: () => selectedPresetReferenceDbId,
+      setSelectedId: setSelectedPresetReferenceDbId,
+      setImages: setPresetReferenceDbImages
+    },
+    img2txt2img: {
+      getSelectedId: () => selectedImg2txt2imgReferenceDbId,
+      setSelectedId: setSelectedImg2txt2imgReferenceDbId,
+      setImages: setImg2txt2imgReferenceDbImages
+    }
+  };
+
+  const handleOutfitSelectForSection = async (sectionKey, outfit) => {
+    const section = outfitSectionConfig[sectionKey];
+    if (!section) return;
+
+    if (section.getSelectedId() === outfit.id) {
+      section.setSelectedId(null);
+      section.setImages([]);
+      addLog(`Removed outfit from ${sectionKey}.`);
       return;
     }
 
@@ -396,31 +498,220 @@ export default function App() {
       return;
     }
 
-    setSelectedOutfitId(outfit.id);
-    setOutfitImagesLoading(true);
-    addLog(`Loading outfit: ${outfit.name}...`);
+    section.setSelectedId(outfit.id);
+    section.setImages([]);
+    setOutfitImagesLoadingSection(sectionKey);
+    addLog(`Loading outfit for ${sectionKey}: ${outfit.name}...`);
 
     try {
-      const base64Images = [];
-      for (const imageUrl of outfit.images) {
-        const proxyResponse = await fetch(`/api/notion-image?url=${encodeURIComponent(imageUrl)}`);
-        if (!proxyResponse.ok) {
-          const errData = await proxyResponse.json().catch(() => ({}));
-          throw new Error(errData.error || `Failed to fetch outfit image`);
-        }
-        const data = await proxyResponse.json();
-        base64Images.push(data.dataUrl);
-      }
-
-      // Add the outfit images to preset reference images
-      setPresetReferenceImages(prev => [...prev, ...base64Images]);
-      addLog(`Added ${base64Images.length} image(s) from "${outfit.name}"`);
+      const base64Images = await loadOutfitImages(outfit);
+      section.setImages(base64Images);
+      addLog(`Loaded ${base64Images.length} outfit image(s) for ${sectionKey}.`);
     } catch (err) {
       console.error('Failed to load outfit images:', err);
+      section.setSelectedId(null);
+      section.setImages([]);
       addLog(`Error loading outfit images: ${err.message}`);
     } finally {
-      setOutfitImagesLoading(false);
+      setOutfitImagesLoadingSection(null);
     }
+  };
+
+  const handleReferenceSelectForSection = async (sectionKey, referenceItem) => {
+    const section = referenceSectionConfig[sectionKey];
+    if (!section) return;
+
+    if (section.getSelectedId() === referenceItem.id) {
+      section.setSelectedId(null);
+      section.setImages([]);
+      addLog(`Removed reference image from ${sectionKey}.`);
+      return;
+    }
+
+    if (!referenceItem.images || referenceItem.images.length === 0) {
+      addLog(`Reference image "${referenceItem.name}" has no images.`);
+      return;
+    }
+
+    section.setSelectedId(referenceItem.id);
+    section.setImages([]);
+    setReferenceImagesLoadingSection(sectionKey);
+    addLog(`Loading reference image for ${sectionKey}: ${referenceItem.name}...`);
+
+    try {
+      const base64Images = await loadOutfitImages(referenceItem);
+      section.setImages(base64Images);
+      addLog(`Loaded ${base64Images.length} reference image(s) for ${sectionKey}.`);
+    } catch (err) {
+      console.error('Failed to load reference images:', err);
+      section.setSelectedId(null);
+      section.setImages([]);
+      addLog(`Error loading reference images: ${err.message}`);
+    } finally {
+      setReferenceImagesLoadingSection(null);
+    }
+  };
+
+  const renderReferenceSelector = (sectionKey, selectedReferenceId) => {
+    const isReferenceLoading = referenceImagesLoadingSection === sectionKey;
+
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-1">
+          <label className="block text-xs text-slate-500 flex items-center gap-1">
+            <ImagePlus className="w-3 h-3" /> Reference Image
+            <span className="text-indigo-400 ml-1">(from Notion)</span>
+          </label>
+          <button
+            onClick={fetchNotionReferenceImages}
+            disabled={referenceImagesLoading}
+            className="text-xs text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors disabled:opacity-50"
+            title="Refresh reference images"
+          >
+            <RotateCcw className={`w-3 h-3 ${referenceImagesLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+
+        {referenceImagesError && (
+          <div className="text-xs text-red-400/80 bg-red-500/10 border border-red-500/20 rounded-lg p-2 mb-2">
+            {referenceImagesError}
+          </div>
+        )}
+
+        {referenceImagesLoading && notionReferenceImages.length === 0 ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="w-4 h-4 animate-spin text-indigo-400 mr-2" />
+            <span className="text-xs text-slate-500">Loading reference images...</span>
+          </div>
+        ) : notionReferenceImages.length === 0 ? (
+          <div className="text-xs text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">
+            No reference images found. Check your Notion integration.
+          </div>
+        ) : (
+          <div className="max-h-40 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+            {notionReferenceImages.map((item) => (
+              <button
+                key={`${sectionKey}-${item.id}`}
+                onClick={() => handleReferenceSelectForSection(sectionKey, item)}
+                disabled={isReferenceLoading}
+                className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${selectedReferenceId === item.id
+                    ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
+                    : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+                  } ${isReferenceLoading ? 'opacity-60 cursor-wait' : ''}`}
+              >
+                {item.images && item.images.length > 0 ? (
+                  <img
+                    src={item.images[0]}
+                    alt={item.name}
+                    className="w-8 h-8 rounded object-cover flex-shrink-0 border border-slate-700"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
+                    <ImagePlus className="w-4 h-4 text-slate-600" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <span className={`block truncate ${selectedReferenceId === item.id ? 'text-indigo-300' : 'text-slate-300'}`}>
+                    {item.name}
+                  </span>
+                  <span className="text-[10px] text-slate-600">
+                    {item.images?.length || 0} image(s)
+                  </span>
+                </div>
+                {selectedReferenceId === item.id && (
+                  <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                )}
+                {isReferenceLoading && selectedReferenceId === item.id && (
+                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin flex-shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderOutfitSelector = (sectionKey, selectedOutfitId) => {
+    const isOutfitLoading = outfitImagesLoadingSection === sectionKey;
+
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-1">
+          <label className="block text-xs text-slate-500 flex items-center gap-1">
+            <Shirt className="w-3 h-3" /> Outfits
+            <span className="text-indigo-400 ml-1">(from Notion)</span>
+          </label>
+          <button
+            onClick={fetchNotionOutfits}
+            disabled={outfitsLoading}
+            className="text-xs text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors disabled:opacity-50"
+            title="Refresh outfits"
+          >
+            <RotateCcw className={`w-3 h-3 ${outfitsLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+
+        {outfitsError && (
+          <div className="text-xs text-red-400/80 bg-red-500/10 border border-red-500/20 rounded-lg p-2 mb-2">
+            {outfitsError}
+          </div>
+        )}
+
+        {outfitsLoading && notionOutfits.length === 0 ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="w-4 h-4 animate-spin text-indigo-400 mr-2" />
+            <span className="text-xs text-slate-500">Loading outfits...</span>
+          </div>
+        ) : notionOutfits.length === 0 ? (
+          <div className="text-xs text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">
+            No outfits found. Check your Notion integration.
+          </div>
+        ) : (
+          <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+            {notionOutfits.map((outfit) => (
+              <button
+                key={`${sectionKey}-${outfit.id}`}
+                onClick={() => handleOutfitSelectForSection(sectionKey, outfit)}
+                disabled={isOutfitLoading}
+                className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${selectedOutfitId === outfit.id
+                    ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
+                    : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+                  } ${isOutfitLoading ? 'opacity-60 cursor-wait' : ''}`}
+              >
+                {outfit.images && outfit.images.length > 0 ? (
+                  <img
+                    src={outfit.images[0]}
+                    alt={outfit.name}
+                    className="w-8 h-8 rounded object-cover flex-shrink-0 border border-slate-700"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
+                    <Shirt className="w-4 h-4 text-slate-600" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <span className={`block truncate ${selectedOutfitId === outfit.id ? 'text-indigo-300' : 'text-slate-300'}`}>
+                    {outfit.name}
+                  </span>
+                  <span className="text-[10px] text-slate-600">
+                    {outfit.images?.length || 0} image(s)
+                  </span>
+                </div>
+                {selectedOutfitId === outfit.id && (
+                  <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                )}
+                {isOutfitLoading && selectedOutfitId === outfit.id && (
+                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin flex-shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const sanitizeCaptionWithOpenAi = async (caption) => {
@@ -523,19 +814,20 @@ export default function App() {
 
   // --- API Interaction (Wavespeed) ---
   const generateContent = async () => {
+    const combinedReferenceImages = [...referenceImages, ...customReferenceDbImages, ...customOutfitImages];
     if (!apiKey) {
       setError("Please enter your Wavespeed API Key first.");
       return;
     }
-    if (selectedModel.id.includes('edit') && referenceImages.length === 0) {
+    if (selectedModel.id.includes('edit') && combinedReferenceImages.length === 0) {
       setError("The Edit model requires at least one reference image.");
       return;
     }
-    if (selectedModel.id.includes('seedance') && referenceImages.length === 0) {
+    if (selectedModel.id.includes('seedance') && combinedReferenceImages.length === 0) {
       setError("Seedance model requires a reference image.");
       return;
     }
-    if (!prompt && referenceImages.length === 0) {
+    if (!prompt && combinedReferenceImages.length === 0) {
       setError("Please enter a prompt or provide a reference image.");
       return;
     }
@@ -565,7 +857,7 @@ export default function App() {
         // Nano Banana Pro Edit requires specific format
         payload = {
           prompt: prompt || " ",
-          images: referenceImages,
+          images: combinedReferenceImages,
           resolution: resolution, // '1k', '2k', or '4k' (lowercase)
           aspect_ratio: selectedDimension.id, // e.g., '4:5', '9:16'
           output_format: 'png',
@@ -574,7 +866,7 @@ export default function App() {
         };
       } else if (selectedModel.id.includes('seedance')) {
         // Seedance image-to-video model
-        const mainImage = referenceImages[0];
+        const mainImage = combinedReferenceImages[0];
         payload = {
           camera_fixed: cameraFixed,
           duration: videoDuration,
@@ -587,14 +879,14 @@ export default function App() {
         // Both seedream v4 and v4.5 use size parameter
         payload = {
           size: `${selectedDimension.width}*${selectedDimension.height}`,
-          images: referenceImages,
+          images: combinedReferenceImages,
           prompt: prompt || " ",
           enable_sync_mode: false,
           enable_base64_output: false
         };
       } else if (selectedModel.id.includes('nano-banana-pro')) {
         // Regular Nano Banana Pro generation
-        const mainImage = referenceImages[0] || null;
+        const mainImage = combinedReferenceImages[0] || null;
         payload = {
           prompt: prompt || " ",
           aspect_ratio: selectedDimension.id, // e.g., '4:5', '9:16'
@@ -609,7 +901,7 @@ export default function App() {
         }
       } else {
         // Fallback for other models
-        const mainImage = referenceImages[0] || null;
+        const mainImage = combinedReferenceImages[0] || null;
         payload = {
           prompt: prompt || " ",
           width: selectedDimension.width,
@@ -892,7 +1184,7 @@ export default function App() {
 
     // Create jobs for each second image
     const jobs = igSecondImages.map((secondImage, index) => {
-      const images = [igFirstImage, secondImage];
+      const images = [igFirstImage, secondImage, ...igReferenceDbImages, ...igOutfitImages];
 
       let payload = {};
       if (igSelectedModel.includes('nano-banana-pro/edit')) {
@@ -1130,15 +1422,16 @@ export default function App() {
   };
 
   const generatePresetPicture = async () => {
+    const combinedPresetImages = [...presetReferenceImages, ...presetReferenceDbImages, ...presetOutfitImages];
     if (!apiKey) {
       setPresetError("Please enter your Wavespeed API Key first.");
       return;
     }
-    if (presetSelectedModel.includes('edit') && presetReferenceImages.length === 0) {
+    if (presetSelectedModel.includes('edit') && combinedPresetImages.length === 0) {
       setPresetError("The Edit model requires at least one reference image.");
       return;
     }
-    if (!presetPrompt && presetReferenceImages.length === 0) {
+    if (!presetPrompt && combinedPresetImages.length === 0) {
       setPresetError("Please enter a prompt or provide a reference image.");
       return;
     }
@@ -1156,7 +1449,7 @@ export default function App() {
       if (presetSelectedModel.includes('nano-banana-pro/edit')) {
         payload = {
           prompt: presetPrompt || " ",
-          images: presetReferenceImages,
+          images: combinedPresetImages,
           resolution: resolution,
           aspect_ratio: selectedDimension.id,
           output_format: 'png',
@@ -1166,7 +1459,7 @@ export default function App() {
       } else if (presetSelectedModel.includes('seedream')) {
         payload = {
           size: `${selectedDimension.width}*${selectedDimension.height}`,
-          images: presetReferenceImages,
+          images: combinedPresetImages,
           prompt: presetPrompt || " ",
           enable_sync_mode: false,
           enable_base64_output: false
@@ -1529,6 +1822,7 @@ export default function App() {
   };
 
   const generateImg2Txt2Img = async () => {
+    const combinedImg2txt2imgImages = [...img2txt2imgReferenceImages, ...img2txt2imgReferenceDbImages, ...img2txt2imgOutfitImages];
     if (!apiKey) {
       setImg2txt2imgError("Please enter your Wavespeed API Key first.");
       return;
@@ -1537,7 +1831,7 @@ export default function App() {
       setImg2txt2imgError("Please generate a caption first.");
       return;
     }
-    if (img2txt2imgSelectedModel.includes('edit') && img2txt2imgReferenceImages.length === 0) {
+    if (img2txt2imgSelectedModel.includes('edit') && combinedImg2txt2imgImages.length === 0) {
       setImg2txt2imgError("The Edit model requires at least one reference image.");
       return;
     }
@@ -1555,7 +1849,7 @@ export default function App() {
       if (img2txt2imgSelectedModel.includes('nano-banana-pro/edit')) {
         payload = {
           prompt: img2txt2imgCaption || " ",
-          images: img2txt2imgReferenceImages,
+          images: combinedImg2txt2imgImages,
           resolution: resolution,
           aspect_ratio: selectedDimension.id,
           output_format: 'png',
@@ -1565,7 +1859,7 @@ export default function App() {
       } else if (img2txt2imgSelectedModel.includes('seedream')) {
         payload = {
           size: `${selectedDimension.width}*${selectedDimension.height}`,
-          images: img2txt2imgReferenceImages,
+          images: combinedImg2txt2imgImages,
           prompt: img2txt2imgCaption || " ",
           enable_sync_mode: false,
           enable_base64_output: false
@@ -2202,12 +2496,26 @@ export default function App() {
                       />
 
                       <div className="text-[10px] text-slate-500 flex justify-between">
-                        <span>{referenceImages.length} image(s) loaded</span>
-                        {referenceImages.length > 0 && (
-                          <button onClick={() => setReferenceImages([])} className="text-red-400/70 hover:text-red-400">Clear all</button>
+                        <span>{referenceImages.length + customReferenceDbImages.length + customOutfitImages.length} image(s) loaded ({referenceImages.length} manual, {customReferenceDbImages.length} reference, {customOutfitImages.length} outfit)</span>
+                        {(referenceImages.length > 0 || customReferenceDbImages.length > 0 || customOutfitImages.length > 0) && (
+                          <button
+                            onClick={() => {
+                              setReferenceImages([]);
+                              setSelectedCustomReferenceDbId(null);
+                              setCustomReferenceDbImages([]);
+                              setSelectedCustomOutfitId(null);
+                              setCustomOutfitImages([]);
+                            }}
+                            className="text-red-400/70 hover:text-red-400"
+                          >
+                            Clear all
+                          </button>
                         )}
                       </div>
                     </div>
+
+                    {renderReferenceSelector('custom', selectedCustomReferenceDbId)}
+                    {renderOutfitSelector('custom', selectedCustomOutfitId)}
 
                     {/* Prompt Input */}
                     <div>
@@ -2555,12 +2863,26 @@ export default function App() {
                       />
 
                       <div className="text-[10px] text-slate-500 flex justify-between">
-                        <span>{igSecondImages.length} image(s) loaded</span>
-                        {igSecondImages.length > 0 && (
-                          <button onClick={() => setIgSecondImages([])} className="text-red-400/70 hover:text-red-400">Clear all</button>
+                        <span>{igSecondImages.length} second image(s) + {igReferenceDbImages.length} reference image(s) + {igOutfitImages.length} outfit image(s)</span>
+                        {(igSecondImages.length > 0 || igReferenceDbImages.length > 0 || igOutfitImages.length > 0) && (
+                          <button
+                            onClick={() => {
+                              setIgSecondImages([]);
+                              setSelectedIgReferenceDbId(null);
+                              setIgReferenceDbImages([]);
+                              setSelectedIgOutfitId(null);
+                              setIgOutfitImages([]);
+                            }}
+                            className="text-red-400/70 hover:text-red-400"
+                          >
+                            Clear all
+                          </button>
                         )}
                       </div>
                     </div>
+
+                    {renderReferenceSelector('ig-picture', selectedIgReferenceDbId)}
+                    {renderOutfitSelector('ig-picture', selectedIgOutfitId)}
 
                     <button
                       onClick={generateIgPicture}
@@ -2855,92 +3177,26 @@ export default function App() {
                       />
 
                       <div className="text-[10px] text-slate-500 flex justify-between">
-                        <span>{presetReferenceImages.length} image(s) loaded</span>
-                        {presetReferenceImages.length > 0 && (
-                          <button onClick={() => {setPresetReferenceImages([]); setSelectedOutfitId(null);}} className="text-red-400/70 hover:text-red-400">Clear all</button>
+                        <span>{presetReferenceImages.length + presetReferenceDbImages.length + presetOutfitImages.length} image(s) loaded ({presetReferenceImages.length} manual, {presetReferenceDbImages.length} reference, {presetOutfitImages.length} outfit)</span>
+                        {(presetReferenceImages.length > 0 || presetReferenceDbImages.length > 0 || presetOutfitImages.length > 0) && (
+                          <button
+                            onClick={() => {
+                              setPresetReferenceImages([]);
+                              setSelectedPresetReferenceDbId(null);
+                              setPresetReferenceDbImages([]);
+                              setSelectedPresetOutfitId(null);
+                              setPresetOutfitImages([]);
+                            }}
+                            className="text-red-400/70 hover:text-red-400"
+                          >
+                            Clear all
+                          </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Outfits from Notion */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="block text-xs text-slate-500 flex items-center gap-1">
-                          <Shirt className="w-3 h-3" /> Outfits
-                          <span className="text-indigo-400 ml-1">(from Notion)</span>
-                        </label>
-                        <button
-                          onClick={fetchNotionOutfits}
-                          disabled={outfitsLoading}
-                          className="text-xs text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors disabled:opacity-50"
-                          title="Refresh outfits"
-                        >
-                          <RotateCcw className={`w-3 h-3 ${outfitsLoading ? 'animate-spin' : ''}`} />
-                          Refresh
-                        </button>
-                      </div>
-
-                      {outfitsError && (
-                        <div className="text-xs text-red-400/80 bg-red-500/10 border border-red-500/20 rounded-lg p-2 mb-2">
-                          {outfitsError}
-                        </div>
-                      )}
-
-                      {outfitsLoading && notionOutfits.length === 0 ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="w-4 h-4 animate-spin text-indigo-400 mr-2" />
-                          <span className="text-xs text-slate-500">Loading outfits...</span>
-                        </div>
-                      ) : notionOutfits.length === 0 ? (
-                        <div className="text-xs text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">
-                          No outfits found. Check your Notion integration.
-                        </div>
-                      ) : (
-                        <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-                          {notionOutfits.map((outfit) => (
-                            <button
-                              key={outfit.id}
-                              onClick={() => handleOutfitSelect(outfit)}
-                              disabled={outfitImagesLoading}
-                              className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${
-                                selectedOutfitId === outfit.id
-                                  ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
-                                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
-                              } ${outfitImagesLoading ? 'opacity-60 cursor-wait' : ''}`}
-                            >
-                              {/* Thumbnail */}
-                              {outfit.images && outfit.images.length > 0 ? (
-                                <img
-                                  src={outfit.images[0]}
-                                  alt={outfit.name}
-                                  className="w-8 h-8 rounded object-cover flex-shrink-0 border border-slate-700"
-                                />
-                              ) : (
-                                <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
-                                  <Shirt className="w-4 h-4 text-slate-600" />
-                                </div>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <span className={`block truncate ${
-                                  selectedOutfitId === outfit.id ? 'text-indigo-300' : 'text-slate-300'
-                                }`}>
-                                  {outfit.name}
-                                </span>
-                                <span className="text-[10px] text-slate-600">
-                                  {outfit.images?.length || 0} image(s)
-                                </span>
-                              </div>
-                              {selectedOutfitId === outfit.id && (
-                                <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                              )}
-                              {outfitImagesLoading && selectedOutfitId === outfit.id && (
-                                <Loader2 className="w-4 h-4 text-indigo-400 animate-spin flex-shrink-0" />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    {renderReferenceSelector('preset-picture', selectedPresetReferenceDbId)}
+                    {renderOutfitSelector('preset-picture', selectedPresetOutfitId)}
 
                     {/* Prompt Input */}
                     <div>
@@ -3321,17 +3577,31 @@ export default function App() {
                       />
 
                       <div className="text-[10px] text-slate-500 flex justify-between">
-                        <span>{img2txt2imgReferenceImages.length} image(s) loaded</span>
-                        {img2txt2imgReferenceImages.length > 0 && (
-                          <button onClick={() => setImg2txt2imgReferenceImages([])} className="text-red-400/70 hover:text-red-400">Clear all</button>
+                        <span>{img2txt2imgReferenceImages.length + img2txt2imgReferenceDbImages.length + img2txt2imgOutfitImages.length} image(s) loaded ({img2txt2imgReferenceImages.length} manual, {img2txt2imgReferenceDbImages.length} reference, {img2txt2imgOutfitImages.length} outfit)</span>
+                        {(img2txt2imgReferenceImages.length > 0 || img2txt2imgReferenceDbImages.length > 0 || img2txt2imgOutfitImages.length > 0) && (
+                          <button
+                            onClick={() => {
+                              setImg2txt2imgReferenceImages([]);
+                              setSelectedImg2txt2imgReferenceDbId(null);
+                              setImg2txt2imgReferenceDbImages([]);
+                              setSelectedImg2txt2imgOutfitId(null);
+                              setImg2txt2imgOutfitImages([]);
+                            }}
+                            className="text-red-400/70 hover:text-red-400"
+                          >
+                            Clear all
+                          </button>
                         )}
                       </div>
                     </div>
 
+                    {renderReferenceSelector('img2txt2img', selectedImg2txt2imgReferenceDbId)}
+                    {renderOutfitSelector('img2txt2img', selectedImg2txt2imgOutfitId)}
+
                     <button
                       onClick={generateImg2Txt2Img}
-                      disabled={img2txt2imgLoading || !apiKey || !img2txt2imgCaption || (img2txt2imgSelectedModel.includes('edit') && img2txt2imgReferenceImages.length === 0)}
-                      className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${img2txt2imgLoading || !apiKey || !img2txt2imgCaption || (img2txt2imgSelectedModel.includes('edit') && img2txt2imgReferenceImages.length === 0)
+                      disabled={img2txt2imgLoading || !apiKey || !img2txt2imgCaption || (img2txt2imgSelectedModel.includes('edit') && (img2txt2imgReferenceImages.length + img2txt2imgReferenceDbImages.length + img2txt2imgOutfitImages.length === 0))}
+                      className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${img2txt2imgLoading || !apiKey || !img2txt2imgCaption || (img2txt2imgSelectedModel.includes('edit') && (img2txt2imgReferenceImages.length + img2txt2imgReferenceDbImages.length + img2txt2imgOutfitImages.length === 0))
                         ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
                         : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-500/20 active:scale-95'
                         }`}
