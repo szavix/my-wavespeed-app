@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Image as ImageIcon, Video, Loader2, Send, Settings, AlertCircle, CheckCircle2, Upload, X, ImagePlus, Layout, Smartphone, Frame, Plus, Instagram, Palette, Film, RotateCcw, Menu, ChevronLeft, FileText } from 'lucide-react';
+import { Play, Image as ImageIcon, Video, Loader2, Send, Settings, AlertCircle, CheckCircle2, Upload, X, ImagePlus, Layout, Smartphone, Frame, Plus, Instagram, Palette, Film, RotateCcw, Menu, ChevronLeft, FileText, Shirt } from 'lucide-react';
 
 // --- Configuration ---
 const AVAILABLE_MODELS = [
@@ -279,6 +279,13 @@ export default function App() {
   const [presetResultUrl, setPresetResultUrl] = useState(null);
   const [presetError, setPresetError] = useState(null);
 
+  // Notion Outfits state
+  const [notionOutfits, setNotionOutfits] = useState([]);
+  const [outfitsLoading, setOutfitsLoading] = useState(false);
+  const [outfitsError, setOutfitsError] = useState(null);
+  const [selectedOutfitId, setSelectedOutfitId] = useState(null);
+  const [outfitImagesLoading, setOutfitImagesLoading] = useState(false);
+
   // Img2Txt2Img specific state
   const [img2txt2imgCaptionImage, setImg2txt2imgCaptionImage] = useState(null);
   const [img2txt2imgCaption, setImg2txt2imgCaption] = useState('');
@@ -349,6 +356,71 @@ export default function App() {
   const addLog = (message) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [`[${timestamp}] ${message}`, ...prev]);
+  };
+
+  // --- Notion Outfits ---
+  const fetchNotionOutfits = async () => {
+    setOutfitsLoading(true);
+    setOutfitsError(null);
+    try {
+      const response = await fetch('/api/outfits');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setNotionOutfits(data.outfits || []);
+    } catch (err) {
+      console.error('Failed to fetch outfits:', err);
+      setOutfitsError(err.message);
+    } finally {
+      setOutfitsLoading(false);
+    }
+  };
+
+  // Fetch outfits on mount
+  useEffect(() => {
+    fetchNotionOutfits();
+  }, []);
+
+  // Select an outfit: fetch its images as base64 and add to preset reference images
+  const handleOutfitSelect = async (outfit) => {
+    if (selectedOutfitId === outfit.id) {
+      // Deselect
+      setSelectedOutfitId(null);
+      return;
+    }
+
+    if (!outfit.images || outfit.images.length === 0) {
+      addLog(`Outfit "${outfit.name}" has no images.`);
+      return;
+    }
+
+    setSelectedOutfitId(outfit.id);
+    setOutfitImagesLoading(true);
+    addLog(`Loading outfit: ${outfit.name}...`);
+
+    try {
+      const base64Images = [];
+      for (const imageUrl of outfit.images) {
+        const proxyResponse = await fetch(`/api/notion-image?url=${encodeURIComponent(imageUrl)}`);
+        if (!proxyResponse.ok) {
+          const errData = await proxyResponse.json().catch(() => ({}));
+          throw new Error(errData.error || `Failed to fetch outfit image`);
+        }
+        const data = await proxyResponse.json();
+        base64Images.push(data.dataUrl);
+      }
+
+      // Add the outfit images to preset reference images
+      setPresetReferenceImages(prev => [...prev, ...base64Images]);
+      addLog(`Added ${base64Images.length} image(s) from "${outfit.name}"`);
+    } catch (err) {
+      console.error('Failed to load outfit images:', err);
+      addLog(`Error loading outfit images: ${err.message}`);
+    } finally {
+      setOutfitImagesLoading(false);
+    }
   };
 
   const sanitizeCaptionWithOpenAi = async (caption) => {
@@ -2785,9 +2857,89 @@ export default function App() {
                       <div className="text-[10px] text-slate-500 flex justify-between">
                         <span>{presetReferenceImages.length} image(s) loaded</span>
                         {presetReferenceImages.length > 0 && (
-                          <button onClick={() => setPresetReferenceImages([])} className="text-red-400/70 hover:text-red-400">Clear all</button>
+                          <button onClick={() => {setPresetReferenceImages([]); setSelectedOutfitId(null);}} className="text-red-400/70 hover:text-red-400">Clear all</button>
                         )}
                       </div>
+                    </div>
+
+                    {/* Outfits from Notion */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-xs text-slate-500 flex items-center gap-1">
+                          <Shirt className="w-3 h-3" /> Outfits
+                          <span className="text-indigo-400 ml-1">(from Notion)</span>
+                        </label>
+                        <button
+                          onClick={fetchNotionOutfits}
+                          disabled={outfitsLoading}
+                          className="text-xs text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors disabled:opacity-50"
+                          title="Refresh outfits"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${outfitsLoading ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </button>
+                      </div>
+
+                      {outfitsError && (
+                        <div className="text-xs text-red-400/80 bg-red-500/10 border border-red-500/20 rounded-lg p-2 mb-2">
+                          {outfitsError}
+                        </div>
+                      )}
+
+                      {outfitsLoading && notionOutfits.length === 0 ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="w-4 h-4 animate-spin text-indigo-400 mr-2" />
+                          <span className="text-xs text-slate-500">Loading outfits...</span>
+                        </div>
+                      ) : notionOutfits.length === 0 ? (
+                        <div className="text-xs text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">
+                          No outfits found. Check your Notion integration.
+                        </div>
+                      ) : (
+                        <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                          {notionOutfits.map((outfit) => (
+                            <button
+                              key={outfit.id}
+                              onClick={() => handleOutfitSelect(outfit)}
+                              disabled={outfitImagesLoading}
+                              className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${
+                                selectedOutfitId === outfit.id
+                                  ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
+                                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+                              } ${outfitImagesLoading ? 'opacity-60 cursor-wait' : ''}`}
+                            >
+                              {/* Thumbnail */}
+                              {outfit.images && outfit.images.length > 0 ? (
+                                <img
+                                  src={outfit.images[0]}
+                                  alt={outfit.name}
+                                  className="w-8 h-8 rounded object-cover flex-shrink-0 border border-slate-700"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
+                                  <Shirt className="w-4 h-4 text-slate-600" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <span className={`block truncate ${
+                                  selectedOutfitId === outfit.id ? 'text-indigo-300' : 'text-slate-300'
+                                }`}>
+                                  {outfit.name}
+                                </span>
+                                <span className="text-[10px] text-slate-600">
+                                  {outfit.images?.length || 0} image(s)
+                                </span>
+                              </div>
+                              {selectedOutfitId === outfit.id && (
+                                <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                              )}
+                              {outfitImagesLoading && selectedOutfitId === outfit.id && (
+                                <Loader2 className="w-4 h-4 text-indigo-400 animate-spin flex-shrink-0" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Prompt Input */}
