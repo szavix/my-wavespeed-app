@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Image as ImageIcon, Video, Loader2, Send, Settings, AlertCircle, CheckCircle2, Upload, X, ImagePlus, Layout, Smartphone, Frame, Plus, Instagram, Palette, Film, RotateCcw, Menu, ChevronLeft, FileText, Shirt } from 'lucide-react';
+import { Play, Image as ImageIcon, Video, Loader2, Send, Settings, AlertCircle, CheckCircle2, Upload, X, ImagePlus, Layout, Smartphone, Frame, Plus, Instagram, Palette, Film, RotateCcw, Menu, ChevronLeft, ChevronRight, FileText, Shirt, Download, CalendarDays } from 'lucide-react';
 
 // --- Configuration ---
 const AVAILABLE_MODELS = [
@@ -224,6 +224,22 @@ export default function App() {
   const [resultUrl, setResultUrl] = useState(null);
   const [error, setError] = useState(null);
   const [logs, setLogs] = useState([]);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleImageUrl, setScheduleImageUrl] = useState('');
+  const [scheduleTitle, setScheduleTitle] = useState('Generated Content');
+  const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split('T')[0]);
+  const [schedulePlatform, setSchedulePlatform] = useState('');
+  const [calendarPlatformOptions, setCalendarPlatformOptions] = useState([]);
+  const [scheduledItemsOnDate, setScheduledItemsOnDate] = useState([]);
+  const [scheduledItemsLoading, setScheduledItemsLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleError, setScheduleError] = useState(null);
+  const [scheduleSuccess, setScheduleSuccess] = useState(null);
+  const [scheduleCalendarOpen, setScheduleCalendarOpen] = useState(false);
+  const [scheduleCalendarMonth, setScheduleCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
 
   // IG Picture specific state
   const [igFirstImage, setIgFirstImage] = useState(null);
@@ -235,49 +251,10 @@ export default function App() {
   const [igLoading, setIgLoading] = useState(false);
   const [igJobStatuses, setIgJobStatuses] = useState([]); // Array of status objects for each job
 
-  // Preset Picture specific state
-  const [presetPrompts] = useState([
-    {
-      title: 'Mirror, squatting, phone selfie',
-      prompt: 'Refer to an image \nA young woman taking a mirror selfie while squatting in the minimal room from the attached image. She\'s wearing outfit from the attached images. Black nails. Black phone case. She is looking directly into the camera. amateur candid photo, iPhone style. Light grain adding realism to the photo'
-    },
-    {
-      title: 'Feet spreading sitting',
-      prompt: 'Refer to an image \nA young woman sitting, posing confidently leaned against a wall, with her legs separated. She\'s wearing a outfit from the attached images, barefoot. Black nails and toenails. She is looking directly into the camera. iPhone style. Woman is in the centre of the image. Very Close distance. The room has light wooden floors, and neutral wall. Feet in the foreground. POV in front of feet'
-    },
-    {
-      title: 'Sitting against a wall',
-      prompt: 'Refer to an image \nA young woman sitting, posing confidently leaned against a wall. She\'s wearing a outfit from the attached images. Black nails and toenails. She is looking directly into the camera. iPhone style. Woman is in the centre of the image. Very Close distance. The room has light wooden floors, and neutral wall.'
-    },
-    {
-      title: 'Bathroom ass',
-      prompt: 'Refer to an image \nA young woman takes a mirror selfie in a minimalistic bathroom. She is wearing outfit from the attached images. Her nails are painted black, and she holds a black smartphone in one hand while the other hand rests on her hip. She is standing sideways, exposing her toned ass. The lighting is soft and clean, highlighting her pale skin tone and the white tiled background. Amateur style, iPhone photo style.'
-    },
-    {
-      title: 'Bed selfie',
-      prompt: 'Refer to an image \nA young woman takes a close up bed selfie while laying. She is wearing outfit from the attached images. She is looking directly into the camera. One of her hands is playing with her hair. Amateur style. iphone photo style. The angle is from the top as if she is holding the camera with one hand. The background shows white duvet. dim lighting, with camera iphone flash effect.'
-    },
-    {
-      title: 'Bed selfie topless',
-      prompt: 'Refer to an image \nA young woman takes a close up bed selfie while laying. She is topless. She is looking directly into the camera. One of her hands is playing with her hair. Amateur style. iphone photo style. The angle is from the top as if she is holding the camera with one hand. The background shows white duvet. dim lighting, with camera iphone flash effect.'
-    },
-    {
-      title: 'Sitting bed posing',
-      prompt: 'Refer to an image \nA young woman sitting, posing confidently on the bed. She\'s wearing outfit from the attached images. Black nails. She is looking directly into the camera. amateur candid photo, iPhone style. Light grain adding realism to the photo. Woman is in the centre of the image. Very Close distance.'
-    },
-    {
-      title: 'Laying on stomach, bed',
-      prompt: 'refer to woman from the attached image. Close up selfie of a young woman lying on her stomach on a bed in a dimly lit bedroom. She\'s looking into the camera. She wears outfit from the attached images. Her feet are lifted behind her, relaxed and slightly crossed, visible in the background. Cozy bedroom setting with dim lighting'
-    },
-    {
-      title: 'After shower, nude',
-      prompt: 'refer to woman from the attached image. Realistic iPhone mirror selfie. She has a wet hair like she just took a shower. She\'s topless and her shaved vagina is visible. small tiled bathroom, natural body pose. Black nails. Black phone case. Visible water droplets on her skin as if she just took a shower'
-    },
-    {
-      title: 'feet POV bed',
-      prompt: 'refer to woman from the attached image. A young woman lays on her stomach with her feet in the pose. Her soles are emphasised on the image. She wears outfit from the attached images. In the foreground, her bare feet are gently extended forward. Sharp details on her feet. POV in front of feet. Black nails.'
-    }
-  ]); // Array of { title: string, prompt: string }
+  // Preset Picture specific state (loaded from Notion)
+  const [presetPrompts, setPresetPrompts] = useState([]);
+  const [presetPromptsLoading, setPresetPromptsLoading] = useState(false);
+  const [presetPromptsError, setPresetPromptsError] = useState(null);
   const [selectedPresetTitle, setSelectedPresetTitle] = useState('');
   const [presetPrompt, setPresetPrompt] = useState(''); // Editable prompt
   const [presetSelectedModel, setPresetSelectedModel] = useState('google/nano-banana-pro/edit');
@@ -362,6 +339,8 @@ export default function App() {
   const img2txt2imgReferenceImagesRef = useRef(null);
   const videoImageRef = useRef(null);
   const videoFileRef = useRef(null);
+  const scheduleFetchSeqRef = useRef(0);
+  const scheduleCacheRef = useRef({});
 
   // Persistence & Environment Variables
   useEffect(() => {
@@ -400,6 +379,158 @@ export default function App() {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [`[${timestamp}] ${message}`, ...prev]);
   };
+
+  const formatDateForInput = (dateObj) => {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const parseInputDate = (value) => {
+    if (!value) return null;
+    const [y, m, d] = value.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+  };
+
+  const downloadGeneratedAsset = async (url, filePrefix = 'generated') => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Download failed: HTTP ${response.status}`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const ext = blob.type?.includes('png') ? 'png' : blob.type?.includes('jpeg') ? 'jpg' : 'png';
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `${filePrefix}-${Date.now()}.${ext}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Failed to download image.');
+    }
+  };
+
+  const fetchScheduledItemsForDate = async (date, options = {}) => {
+    const { force = false } = options;
+    if (!date) return;
+    const cached = scheduleCacheRef.current[date];
+    if (!force && cached) {
+      setScheduledItemsOnDate(cached.items || []);
+      setCalendarPlatformOptions(cached.platformOptions || []);
+      if (!schedulePlatform && (cached.platformOptions || []).length > 0) {
+        setSchedulePlatform(cached.platformOptions[0]);
+      }
+      return;
+    }
+
+    const requestId = ++scheduleFetchSeqRef.current;
+    setScheduledItemsLoading(true);
+    setScheduleError(null);
+    try {
+      const response = await fetch(`/api/content-calendar?date=${encodeURIComponent(date)}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      if (requestId !== scheduleFetchSeqRef.current) return;
+      scheduleCacheRef.current[date] = {
+        items: data.items || [],
+        platformOptions: data.platformOptions || [],
+      };
+      setScheduledItemsOnDate(data.items || []);
+      setCalendarPlatformOptions(data.platformOptions || []);
+      if (!schedulePlatform && (data.platformOptions || []).length > 0) {
+        setSchedulePlatform(data.platformOptions[0]);
+      }
+    } catch (err) {
+      if (requestId !== scheduleFetchSeqRef.current) return;
+      console.error(err);
+      setScheduleError(err.message || 'Failed to load scheduled content.');
+    } finally {
+      if (requestId === scheduleFetchSeqRef.current) {
+        setScheduledItemsLoading(false);
+      }
+    }
+  };
+
+  const openScheduleModal = (imageUrl, defaultTitle = 'Generated Content') => {
+    const todayDate = new Date();
+    const today = formatDateForInput(todayDate);
+    setScheduleImageUrl(imageUrl);
+    setScheduleTitle(defaultTitle);
+    setScheduleDate(today);
+    setScheduleCalendarMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+    setScheduleCalendarOpen(false);
+    setSchedulePlatform('');
+    setScheduleSuccess(null);
+    setScheduleError(null);
+    setScheduleModalOpen(true);
+  };
+
+  const closeScheduleModal = () => {
+    scheduleFetchSeqRef.current += 1;
+    setScheduleCalendarOpen(false);
+    setScheduleModalOpen(false);
+  };
+
+  const scheduleGeneratedContent = async () => {
+    if (!scheduleImageUrl || !scheduleDate || !schedulePlatform) {
+      setScheduleError('Please select a date and platform.');
+      return;
+    }
+
+    setScheduleSaving(true);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+    try {
+      const response = await fetch('/api/content-calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: scheduleTitle || 'Generated Content',
+          publishDate: scheduleDate,
+          platform: schedulePlatform,
+          imageUrl: scheduleImageUrl,
+        }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+
+      setScheduleSuccess('Scheduled successfully.');
+      await fetchScheduledItemsForDate(scheduleDate, { force: true });
+    } catch (err) {
+      console.error(err);
+      setScheduleError(err.message || 'Failed to schedule content.');
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const renderImageActions = (url, title = 'Generated Content') => (
+    <div className="mt-3 flex items-center gap-2">
+      <button
+        onClick={() => downloadGeneratedAsset(url)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs transition-colors"
+      >
+        <Download className="w-3.5 h-3.5" />
+        Download
+      </button>
+      <button
+        onClick={() => openScheduleModal(url, title)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-500/40 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-300 text-xs transition-colors"
+      >
+        <CalendarDays className="w-3.5 h-3.5" />
+        Schedule
+      </button>
+    </div>
+  );
 
   // --- Notion Outfits ---
   const fetchNotionOutfits = async () => {
@@ -440,11 +571,57 @@ export default function App() {
     }
   };
 
+  const fetchPresetPrompts = async () => {
+    setPresetPromptsLoading(true);
+    setPresetPromptsError(null);
+    try {
+      const response = await fetch('/api/prompts');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setPresetPrompts(data.prompts || []);
+    } catch (err) {
+      console.error('Failed to fetch preset prompts:', err);
+      setPresetPromptsError(err.message);
+      setPresetPrompts([]);
+    } finally {
+      setPresetPromptsLoading(false);
+    }
+  };
+
   // Fetch outfits on mount
   useEffect(() => {
     fetchNotionOutfits();
     fetchNotionReferenceImages();
+    fetchPresetPrompts();
   }, []);
+
+  useEffect(() => {
+    if (!selectedPresetTitle) return;
+    const exists = presetPrompts.some((p) => p.title === selectedPresetTitle);
+    if (!exists) {
+      setSelectedPresetTitle('');
+      setPresetPrompt('');
+    }
+  }, [presetPrompts, selectedPresetTitle]);
+
+  useEffect(() => {
+    if (scheduleModalOpen && scheduleDate) {
+      const timer = setTimeout(() => {
+        fetchScheduledItemsForDate(scheduleDate);
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [scheduleModalOpen, scheduleDate]);
+
+  useEffect(() => {
+    const selected = parseInputDate(scheduleDate);
+    if (selected) {
+      setScheduleCalendarMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
+    }
+  }, [scheduleDate]);
 
   const loadOutfitImages = async (outfit) => {
     const base64Images = [];
@@ -726,7 +903,7 @@ export default function App() {
             No outfits found. Check your Notion integration.
           </div>
         ) : (
-          <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
+          <div className="max-h-80 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
             {filteredOutfits.length === 0 && (
               <div className="text-xs text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">
                 No outfits match this type filter.
@@ -737,7 +914,7 @@ export default function App() {
                 key={`${sectionKey}-${outfit.id}`}
                 onClick={() => handleOutfitSelectForSection(sectionKey, outfit)}
                 disabled={isOutfitLoading}
-                className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left text-sm ${selectedOutfitIds.includes(outfit.id)
+                className={`w-full flex items-center gap-4 p-3 rounded-lg border transition-all text-left text-sm ${selectedOutfitIds.includes(outfit.id)
                   ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
                   : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
                   } ${isOutfitLoading ? 'opacity-60 cursor-wait' : ''}`}
@@ -746,11 +923,11 @@ export default function App() {
                   <img
                     src={outfit.images[0]}
                     alt={outfit.name}
-                    className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-slate-700"
+                    className="w-20 h-20 rounded-lg object-cover flex-shrink-0 border border-slate-700"
                   />
                 ) : (
-                  <div className="w-14 h-14 rounded-lg bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
-                    <Shirt className="w-6 h-6 text-slate-600" />
+                  <div className="w-20 h-20 rounded-lg bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
+                    <Shirt className="w-8 h-8 text-slate-600" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
@@ -1450,14 +1627,16 @@ export default function App() {
   // --- Preset Picture Handlers ---
   const handlePresetSelect = (title) => {
     setSelectedPresetTitle(title);
-    const preset = presetPrompts.find(p => p.title === title);
+    const preset = presetPrompts.find((p) => p.title === title);
     if (preset) {
       setPresetPrompt(preset.prompt);
+    } else if (!title) {
+      setPresetPrompt('');
     }
   };
 
   const resetPresetPromptToDefault = () => {
-    const preset = presetPrompts.find(p => p.title === selectedPresetTitle);
+    const preset = presetPrompts.find((p) => p.title === selectedPresetTitle);
     if (preset) {
       setPresetPrompt(preset.prompt);
     }
@@ -2702,7 +2881,7 @@ export default function App() {
                     )}
 
                     {resultUrl && !loading && (
-                      <div className="relative w-full h-full flex items-center justify-center">
+                      <div className="relative w-full h-full flex flex-col items-center justify-center">
                         {selectedModel.type === 'video' || resultUrl.endsWith('.mp4') ? (
                           <video
                             src={resultUrl}
@@ -2718,6 +2897,7 @@ export default function App() {
                             className="max-w-full max-h-[70vh] rounded-lg shadow-2xl shadow-black/50 border border-slate-800"
                           />
                         )}
+                        {!resultUrl.endsWith('.mp4') && renderImageActions(resultUrl, prompt || 'Custom Generation')}
                       </div>
                     )}
                   </div>
@@ -3074,6 +3254,7 @@ export default function App() {
                                 alt={`Generated ${index + 1}`}
                                 className="w-full rounded-lg shadow-2xl shadow-black/50 border border-slate-800"
                               />
+                              {renderImageActions(resultUrl, `IG Picture ${index + 1}`)}
                             </div>
                           )
                         ))}
@@ -3129,19 +3310,38 @@ export default function App() {
                   <div className="space-y-4">
                     {/* Preset Selector */}
                     <div>
-                      <label className="block text-xs text-slate-500 mb-1">Select Preset</label>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-xs text-slate-500">Select Preset</label>
+                        <button
+                          onClick={fetchPresetPrompts}
+                          disabled={presetPromptsLoading}
+                          className="text-xs text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors disabled:opacity-50"
+                          title="Refresh prompts"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${presetPromptsLoading ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </button>
+                      </div>
                       <select
                         value={selectedPresetTitle}
                         onChange={(e) => handlePresetSelect(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
                       >
-                        <option value="">-- Select a preset --</option>
-                        {presetPrompts.map((preset, index) => (
-                          <option key={index} value={preset.title}>
+                        <option value="">
+                          {presetPromptsLoading ? '-- Loading presets... --' : '-- Select a preset --'}
+                        </option>
+                        {presetPrompts.map((preset) => (
+                          <option key={preset.id} value={preset.title}>
                             {preset.title}
                           </option>
                         ))}
                       </select>
+                      {presetPromptsError && (
+                        <p className="mt-1 text-[11px] text-red-400/80">{presetPromptsError}</p>
+                      )}
+                      {!presetPromptsLoading && !presetPromptsError && presetPrompts.length === 0 && (
+                        <p className="mt-1 text-[11px] text-slate-500">No favourite prompts found in Notion.</p>
+                      )}
                     </div>
 
                     {/* Model Selector */}
@@ -3410,12 +3610,13 @@ export default function App() {
                     )}
 
                     {presetResultUrl && !presetLoading && (
-                      <div className="relative w-full h-full flex items-center justify-center">
+                      <div className="relative w-full h-full flex flex-col items-center justify-center">
                         <img
                           src={presetResultUrl}
                           alt="Generated content"
                           className="max-w-full max-h-[70vh] rounded-lg shadow-2xl shadow-black/50 border border-slate-800"
                         />
+                        {renderImageActions(presetResultUrl, selectedPresetTitle || 'Preset Picture')}
                       </div>
                     )}
                   </div>
@@ -3804,12 +4005,13 @@ export default function App() {
                     )}
 
                     {img2txt2imgResultUrl && !img2txt2imgLoading && (
-                      <div className="relative w-full h-full flex items-center justify-center">
+                      <div className="relative w-full h-full flex flex-col items-center justify-center">
                         <img
                           src={img2txt2imgResultUrl}
                           alt="Generated content"
                           className="max-w-full max-h-[70vh] rounded-lg shadow-2xl shadow-black/50 border border-slate-800"
                         />
+                        {renderImageActions(img2txt2imgResultUrl, 'Img2Txt2Img')}
                       </div>
                     )}
                   </div>
@@ -4076,6 +4278,232 @@ export default function App() {
           ) : (
             <div className="text-center py-20">
               <p className="text-slate-400">Section "{selectedSection}" coming soon...</p>
+            </div>
+          )}
+
+          {scheduleModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+              <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold">Schedule Content</h3>
+                    <p className="text-xs text-slate-500">Save this generated image to Notion Content Calendar</p>
+                  </div>
+                  <button
+                    onClick={closeScheduleModal}
+                    className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+                    aria-label="Close schedule modal"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-4 overflow-y-auto space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Content Title</label>
+                      <input
+                        type="text"
+                        value={scheduleTitle}
+                        onChange={(e) => setScheduleTitle(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Publish Date</label>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setScheduleCalendarOpen((prev) => !prev)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 text-left flex items-center justify-between"
+                        >
+                          <span>
+                            {scheduleDate
+                              ? parseInputDate(scheduleDate)?.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+                              : 'Select date'}
+                          </span>
+                          <CalendarDays className="w-4 h-4 text-slate-400" />
+                        </button>
+
+                        {scheduleCalendarOpen && (
+                          <div className="absolute z-20 mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 shadow-2xl">
+                            <div className="flex items-center justify-between mb-2">
+                              <button
+                                type="button"
+                                onClick={() => setScheduleCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                                className="p-1 rounded hover:bg-slate-800 text-slate-300"
+                                aria-label="Previous month"
+                              >
+                                <ChevronLeft className="w-4 h-4" />
+                              </button>
+                              <div className="text-sm text-slate-200 font-medium">
+                                {scheduleCalendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setScheduleCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                                className="p-1 rounded hover:bg-slate-800 text-slate-300"
+                                aria-label="Next month"
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1 text-[10px] text-slate-500 mb-1">
+                              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                                <div key={day} className="text-center py-1">{day}</div>
+                              ))}
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1">
+                              {(() => {
+                                const year = scheduleCalendarMonth.getFullYear();
+                                const month = scheduleCalendarMonth.getMonth();
+                                const firstDay = new Date(year, month, 1);
+                                const dayOffset = (firstDay.getDay() + 6) % 7; // Monday first
+                                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                                const totalCells = Math.ceil((dayOffset + daysInMonth) / 7) * 7;
+                                const selectedDate = parseInputDate(scheduleDate);
+
+                                return Array.from({ length: totalCells }, (_, idx) => {
+                                  const day = idx - dayOffset + 1;
+                                  if (day < 1 || day > daysInMonth) {
+                                    return <div key={`empty-${idx}`} className="h-8" />;
+                                  }
+
+                                  const cellDate = new Date(year, month, day);
+                                  const isSelected = selectedDate &&
+                                    cellDate.getFullYear() === selectedDate.getFullYear() &&
+                                    cellDate.getMonth() === selectedDate.getMonth() &&
+                                    cellDate.getDate() === selectedDate.getDate();
+                                  const isToday = (() => {
+                                    const now = new Date();
+                                    return cellDate.getFullYear() === now.getFullYear() &&
+                                      cellDate.getMonth() === now.getMonth() &&
+                                      cellDate.getDate() === now.getDate();
+                                  })();
+
+                                  return (
+                                    <button
+                                      key={`day-${day}`}
+                                      type="button"
+                                      onClick={() => {
+                                        setScheduleDate(formatDateForInput(cellDate));
+                                        setScheduleCalendarOpen(false);
+                                      }}
+                                      className={`h-8 rounded text-xs transition-colors ${isSelected
+                                        ? 'bg-indigo-600 text-white'
+                                        : isToday
+                                          ? 'bg-slate-800 text-slate-200 border border-slate-700'
+                                          : 'text-slate-300 hover:bg-slate-800'
+                                        }`}
+                                    >
+                                      {day}
+                                    </button>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Platform</label>
+                    {calendarPlatformOptions.length > 0 ? (
+                      <select
+                        value={schedulePlatform}
+                        onChange={(e) => setSchedulePlatform(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                      >
+                        <option value="">-- Select Platform --</option>
+                        {calendarPlatformOptions.map((platform) => (
+                          <option key={platform} value={platform}>{platform}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={schedulePlatform}
+                        onChange={(e) => setSchedulePlatform(e.target.value)}
+                        placeholder="Enter platform name"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                      />
+                    )}
+                  </div>
+
+                  {scheduleImageUrl && (
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Image Preview</label>
+                      <img
+                        src={scheduleImageUrl}
+                        alt="To be scheduled"
+                        className="w-24 h-24 rounded-lg object-cover border border-slate-700"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-2">Already Scheduled on {scheduleDate || 'selected date'}</label>
+                    <div className="max-h-52 overflow-y-auto space-y-2 border border-slate-800 rounded-lg p-2 bg-slate-950/50">
+                      {scheduledItemsLoading ? (
+                        <div className="text-slate-500 text-xs flex items-center">
+                          <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                          Loading scheduled content...
+                        </div>
+                      ) : scheduledItemsOnDate.length === 0 ? (
+                        <div className="text-slate-600 text-xs">No scheduled content on this date.</div>
+                      ) : (
+                        scheduledItemsOnDate.map((item) => (
+                          <div key={item.id} className="flex items-center gap-2 p-2 rounded-md border border-slate-800 bg-slate-900/50">
+                            {item.imageUrl ? (
+                              <img src={item.imageUrl} alt={item.title} className="w-10 h-10 rounded object-cover border border-slate-700" />
+                            ) : (
+                              <div className="w-10 h-10 rounded bg-slate-800 border border-slate-700" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs text-slate-200 truncate">{item.title || 'Untitled'}</div>
+                              <div className="text-[10px] text-slate-500">{item.platform || 'Unknown platform'}</div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {scheduleError && (
+                    <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">
+                      {scheduleError}
+                    </div>
+                  )}
+                  {scheduleSuccess && (
+                    <div className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 rounded-lg p-2">
+                      {scheduleSuccess}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-2">
+                  <button
+                    onClick={closeScheduleModal}
+                    className="px-3 py-2 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={scheduleGeneratedContent}
+                    disabled={scheduleSaving || !scheduleDate || !schedulePlatform}
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${scheduleSaving || !scheduleDate || !schedulePlatform
+                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                      }`}
+                  >
+                    {scheduleSaving ? 'Scheduling...' : 'Schedule'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </main>
