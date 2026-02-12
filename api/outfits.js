@@ -52,6 +52,22 @@ function extractImages(page) {
     .filter(Boolean);
 }
 
+function extractType(page) {
+  const typeProp = page?.properties?.type || page?.properties?.Type;
+  if (!typeProp) return null;
+
+  if (typeProp.type === 'select') {
+    return typeProp.select?.name || null;
+  }
+  if (typeProp.type === 'multi_select') {
+    return typeProp.multi_select?.[0]?.name || null;
+  }
+  if (typeProp.type === 'rich_text') {
+    return typeProp.rich_text?.map((t) => t.plain_text).join('') || null;
+  }
+  return null;
+}
+
 async function queryOutfits(notion, databaseId) {
   if (notion.dataSources?.query) {
     if (!resolvedDataSourceId) {
@@ -102,6 +118,7 @@ export default async function handler(req, res) {
       id: page.id,
       name: extractTitle(page),
       images: extractImages(page),
+      type: extractType(page),
     }));
 
     res.status(200).json({ outfits });

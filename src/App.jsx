@@ -239,19 +239,27 @@ export default function App() {
   const [presetPrompts] = useState([
     {
       title: 'Mirror, squatting, phone selfie',
-      prompt: 'Refer to an image \nA young woman taking a mirror selfie while squatting in the minimal room from the second image. She\'s wearing outfit from the attached images. Black nails. Black phone case. She is looking directly into the camera. amateur candid photo, iPhone style. Light grain adding realism to the photo'
+      prompt: 'Refer to an image \nA young woman taking a mirror selfie while squatting in the minimal room from the attached image. She\'s wearing outfit from the attached images. Black nails. Black phone case. She is looking directly into the camera. amateur candid photo, iPhone style. Light grain adding realism to the photo'
     },
     {
       title: 'Feet spreading sitting',
-      prompt: 'Refer to an image \nA young woman sitting, posing confidently leaned against a wall, with her legs separated. She\'s wearing a black tshirt and black jeans, barefoot. Black nails and toenails. She is looking directly into the camera. iPhone style. Woman is in the centre of the image. Very Close distance. The room has light wooden floors, and neutral wall. Feet in the foreground. POV in front of feet'
+      prompt: 'Refer to an image \nA young woman sitting, posing confidently leaned against a wall, with her legs separated. She\'s wearing a outfit from the attached images, barefoot. Black nails and toenails. She is looking directly into the camera. iPhone style. Woman is in the centre of the image. Very Close distance. The room has light wooden floors, and neutral wall. Feet in the foreground. POV in front of feet'
+    },
+    {
+      title: 'Sitting against a wall',
+      prompt: 'Refer to an image \nA young woman sitting, posing confidently leaned against a wall. She\'s wearing a outfit from the attached images. Black nails and toenails. She is looking directly into the camera. iPhone style. Woman is in the centre of the image. Very Close distance. The room has light wooden floors, and neutral wall.'
     },
     {
       title: 'Bathroom ass',
-      prompt: 'Refer to an image \nA young woman takes a mirror selfie in a minimalistic bathroom. She is wearing outfit from the attached images. Her nails are painted black, and she holds a black smartphone in one hand while the other hand rests on her hip. She is standing sideways, exposing her toned ass. The lighting is soft and clean, highlighting her pale skin tone and the white tiled background. Amateur style, iPhone photo style. Medium size boobs'
+      prompt: 'Refer to an image \nA young woman takes a mirror selfie in a minimalistic bathroom. She is wearing outfit from the attached images. Her nails are painted black, and she holds a black smartphone in one hand while the other hand rests on her hip. She is standing sideways, exposing her toned ass. The lighting is soft and clean, highlighting her pale skin tone and the white tiled background. Amateur style, iPhone photo style.'
+    },
+    {
+      title: 'Bed selfie',
+      prompt: 'Refer to an image \nA young woman takes a close up bed selfie while laying. She is wearing outfit from the attached images. She is looking directly into the camera. One of her hands is playing with her hair. Amateur style. iphone photo style. The angle is from the top as if she is holding the camera with one hand. The background shows white duvet. dim lighting, with camera iphone flash effect.'
     },
     {
       title: 'Bed selfie topless',
-      prompt: 'Refer to an image \nA young woman takes a close up bed selfie while laying. She is topless and wearing red latex thongs. She is looking directly into the camera. One of her hands is playing with her hair. She\'s sticking her tongue out black nails. Amateur style. iphone photo style. The angle is from the top as if she is holding the camera with one hand. The background shows white duvet. dim lighting, with camera iphone flash effect.'
+      prompt: 'Refer to an image \nA young woman takes a close up bed selfie while laying. She is topless. She is looking directly into the camera. One of her hands is playing with her hair. Amateur style. iphone photo style. The angle is from the top as if she is holding the camera with one hand. The background shows white duvet. dim lighting, with camera iphone flash effect.'
     },
     {
       title: 'Sitting bed posing',
@@ -259,15 +267,15 @@ export default function App() {
     },
     {
       title: 'Laying on stomach, bed',
-      prompt: 'refer to woman from the attached image. Close up selfie of a young woman lying on her stomach on a bed in a dimly lit bedroom. Her lips are slightly parted as she gently bites her lower lip, giving a playful, dreamy expression. She\'s looking into the camera. She wears a black top and a delicate necklace. Her bare feet are lifted behind her, relaxed and slightly crossed, soles visible in the background. Cozy bedroom setting with dim lighting'
+      prompt: 'refer to woman from the attached image. Close up selfie of a young woman lying on her stomach on a bed in a dimly lit bedroom. She\'s looking into the camera. She wears outfit from the attached images. Her feet are lifted behind her, relaxed and slightly crossed, visible in the background. Cozy bedroom setting with dim lighting'
     },
     {
       title: 'After shower, nude',
-      prompt: 'Realistic iPhone mirror selfie, young woman from the first image. She has a wet hair like she just took a shower. She\'s topless and her shaved vagina is visible. small tiled bathroom from the third image, natural body pose, raw smartphone photography aesthetic. Black nails. Black phone case. Visible water droplets on her skin as if she just took a shower'
+      prompt: 'refer to woman from the attached image. Realistic iPhone mirror selfie. She has a wet hair like she just took a shower. She\'s topless and her shaved vagina is visible. small tiled bathroom, natural body pose. Black nails. Black phone case. Visible water droplets on her skin as if she just took a shower'
     },
     {
       title: 'feet POV bed',
-      prompt: 'refer to person from the first image. A young woman lays on her stomach with her feet in the pose. Her soles are emphasised on the image. She wears black pyjama. In the foreground, her bare feet are gently extended forward. Sharp details on her feet. POV in front of feet. Black nails.'
+      prompt: 'refer to woman from the attached image. A young woman lays on her stomach with her feet in the pose. Her soles are emphasised on the image. She wears outfit from the attached images. In the foreground, her bare feet are gently extended forward. Sharp details on her feet. POV in front of feet. Black nails.'
     }
   ]); // Array of { title: string, prompt: string }
   const [selectedPresetTitle, setSelectedPresetTitle] = useState('');
@@ -283,6 +291,12 @@ export default function App() {
   const [notionOutfits, setNotionOutfits] = useState([]);
   const [outfitsLoading, setOutfitsLoading] = useState(false);
   const [outfitsError, setOutfitsError] = useState(null);
+  const [outfitTypeFilterBySection, setOutfitTypeFilterBySection] = useState({
+    custom: 'all',
+    'ig-picture': 'all',
+    'preset-picture': 'all',
+    img2txt2img: 'all'
+  });
   const [notionReferenceImages, setNotionReferenceImages] = useState([]);
   const [referenceImagesLoading, setReferenceImagesLoading] = useState(false);
   const [referenceImagesError, setReferenceImagesError] = useState(null);
@@ -608,8 +622,8 @@ export default function App() {
                 onClick={() => handleReferenceSelectForSection(sectionKey, item)}
                 disabled={isReferenceLoading}
                 className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${selectedReferenceIds.includes(item.id)
-                    ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
-                    : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+                  ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
+                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
                   } ${isReferenceLoading ? 'opacity-60 cursor-wait' : ''}`}
               >
                 {item.images && item.images.length > 0 ? (
@@ -647,6 +661,17 @@ export default function App() {
 
   const renderOutfitSelector = (sectionKey, selectedOutfitIds) => {
     const isOutfitLoading = outfitImagesLoadingSection === sectionKey;
+    const selectedTypeFilter = outfitTypeFilterBySection[sectionKey] || 'all';
+    const availableTypes = Array.from(
+      new Set(
+        notionOutfits
+          .map((outfit) => (outfit.type || '').trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+    const filteredOutfits = selectedTypeFilter === 'all'
+      ? notionOutfits
+      : notionOutfits.filter((outfit) => (outfit.type || '').trim() === selectedTypeFilter);
 
     return (
       <div>
@@ -666,6 +691,25 @@ export default function App() {
           </button>
         </div>
 
+        <div className="mb-2">
+          <label className="block text-[10px] text-slate-500 mb-1">Filter by type</label>
+          <select
+            value={selectedTypeFilter}
+            onChange={(e) => {
+              const value = e.target.value;
+              setOutfitTypeFilterBySection((prev) => ({ ...prev, [sectionKey]: value }));
+            }}
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+          >
+            <option value="all">All types</option>
+            {availableTypes.map((type) => (
+              <option key={`${sectionKey}-${type}`} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {outfitsError && (
           <div className="text-xs text-red-400/80 bg-red-500/10 border border-red-500/20 rounded-lg p-2 mb-2">
             {outfitsError}
@@ -682,35 +726,47 @@ export default function App() {
             No outfits found. Check your Notion integration.
           </div>
         ) : (
-          <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-            {notionOutfits.map((outfit) => (
+          <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
+            {filteredOutfits.length === 0 && (
+              <div className="text-xs text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">
+                No outfits match this type filter.
+              </div>
+            )}
+            {filteredOutfits.map((outfit) => (
               <button
                 key={`${sectionKey}-${outfit.id}`}
                 onClick={() => handleOutfitSelectForSection(sectionKey, outfit)}
                 disabled={isOutfitLoading}
-                className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${selectedOutfitIds.includes(outfit.id)
-                    ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
-                    : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+                className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left text-sm ${selectedOutfitIds.includes(outfit.id)
+                  ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
+                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
                   } ${isOutfitLoading ? 'opacity-60 cursor-wait' : ''}`}
               >
                 {outfit.images && outfit.images.length > 0 ? (
                   <img
                     src={outfit.images[0]}
                     alt={outfit.name}
-                    className="w-8 h-8 rounded object-cover flex-shrink-0 border border-slate-700"
+                    className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-slate-700"
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
-                    <Shirt className="w-4 h-4 text-slate-600" />
+                  <div className="w-14 h-14 rounded-lg bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
+                    <Shirt className="w-6 h-6 text-slate-600" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <span className={`block truncate ${selectedOutfitIds.includes(outfit.id) ? 'text-indigo-300' : 'text-slate-300'}`}>
                     {outfit.name}
                   </span>
-                  <span className="text-[10px] text-slate-600">
-                    {outfit.images?.length || 0} image(s)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-600">
+                      {outfit.images?.length || 0} image(s)
+                    </span>
+                    {outfit.type && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 capitalize">
+                        {outfit.type}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {selectedOutfitIds.includes(outfit.id) && (
                   <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
