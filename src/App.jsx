@@ -288,22 +288,32 @@ export default function App() {
   const [referenceImagesError, setReferenceImagesError] = useState(null);
   const [outfitImagesLoadingSection, setOutfitImagesLoadingSection] = useState(null);
   const [referenceImagesLoadingSection, setReferenceImagesLoadingSection] = useState(null);
-  const [selectedCustomOutfitId, setSelectedCustomOutfitId] = useState(null);
-  const [selectedIgOutfitId, setSelectedIgOutfitId] = useState(null);
-  const [selectedPresetOutfitId, setSelectedPresetOutfitId] = useState(null);
-  const [selectedImg2txt2imgOutfitId, setSelectedImg2txt2imgOutfitId] = useState(null);
-  const [selectedCustomReferenceDbId, setSelectedCustomReferenceDbId] = useState(null);
-  const [selectedIgReferenceDbId, setSelectedIgReferenceDbId] = useState(null);
-  const [selectedPresetReferenceDbId, setSelectedPresetReferenceDbId] = useState(null);
-  const [selectedImg2txt2imgReferenceDbId, setSelectedImg2txt2imgReferenceDbId] = useState(null);
-  const [customOutfitImages, setCustomOutfitImages] = useState([]);
-  const [igOutfitImages, setIgOutfitImages] = useState([]);
-  const [presetOutfitImages, setPresetOutfitImages] = useState([]);
-  const [img2txt2imgOutfitImages, setImg2txt2imgOutfitImages] = useState([]);
-  const [customReferenceDbImages, setCustomReferenceDbImages] = useState([]);
-  const [igReferenceDbImages, setIgReferenceDbImages] = useState([]);
-  const [presetReferenceDbImages, setPresetReferenceDbImages] = useState([]);
-  const [img2txt2imgReferenceDbImages, setImg2txt2imgReferenceDbImages] = useState([]);
+  const [selectedCustomOutfitIds, setSelectedCustomOutfitIds] = useState([]);
+  const [selectedIgOutfitIds, setSelectedIgOutfitIds] = useState([]);
+  const [selectedPresetOutfitIds, setSelectedPresetOutfitIds] = useState([]);
+  const [selectedImg2txt2imgOutfitIds, setSelectedImg2txt2imgOutfitIds] = useState([]);
+  const [selectedCustomReferenceDbIds, setSelectedCustomReferenceDbIds] = useState([]);
+  const [selectedIgReferenceDbIds, setSelectedIgReferenceDbIds] = useState([]);
+  const [selectedPresetReferenceDbIds, setSelectedPresetReferenceDbIds] = useState([]);
+  const [selectedImg2txt2imgReferenceDbIds, setSelectedImg2txt2imgReferenceDbIds] = useState([]);
+  const [customOutfitImageMap, setCustomOutfitImageMap] = useState({});
+  const [igOutfitImageMap, setIgOutfitImageMap] = useState({});
+  const [presetOutfitImageMap, setPresetOutfitImageMap] = useState({});
+  const [img2txt2imgOutfitImageMap, setImg2txt2imgOutfitImageMap] = useState({});
+  const [customReferenceDbImageMap, setCustomReferenceDbImageMap] = useState({});
+  const [igReferenceDbImageMap, setIgReferenceDbImageMap] = useState({});
+  const [presetReferenceDbImageMap, setPresetReferenceDbImageMap] = useState({});
+  const [img2txt2imgReferenceDbImageMap, setImg2txt2imgReferenceDbImageMap] = useState({});
+
+  const flattenImageMap = (imageMap) => Object.values(imageMap).flat();
+  const customOutfitImages = flattenImageMap(customOutfitImageMap);
+  const igOutfitImages = flattenImageMap(igOutfitImageMap);
+  const presetOutfitImages = flattenImageMap(presetOutfitImageMap);
+  const img2txt2imgOutfitImages = flattenImageMap(img2txt2imgOutfitImageMap);
+  const customReferenceDbImages = flattenImageMap(customReferenceDbImageMap);
+  const igReferenceDbImages = flattenImageMap(igReferenceDbImageMap);
+  const presetReferenceDbImages = flattenImageMap(presetReferenceDbImageMap);
+  const img2txt2imgReferenceDbImages = flattenImageMap(img2txt2imgReferenceDbImageMap);
 
   // Img2Txt2Img specific state
   const [img2txt2imgCaptionImage, setImg2txt2imgCaptionImage] = useState(null);
@@ -438,47 +448,47 @@ export default function App() {
 
   const outfitSectionConfig = {
     custom: {
-      getSelectedId: () => selectedCustomOutfitId,
-      setSelectedId: setSelectedCustomOutfitId,
-      setImages: setCustomOutfitImages
+      getSelectedIds: () => selectedCustomOutfitIds,
+      setSelectedIds: setSelectedCustomOutfitIds,
+      setImageMap: setCustomOutfitImageMap
     },
     'ig-picture': {
-      getSelectedId: () => selectedIgOutfitId,
-      setSelectedId: setSelectedIgOutfitId,
-      setImages: setIgOutfitImages
+      getSelectedIds: () => selectedIgOutfitIds,
+      setSelectedIds: setSelectedIgOutfitIds,
+      setImageMap: setIgOutfitImageMap
     },
     'preset-picture': {
-      getSelectedId: () => selectedPresetOutfitId,
-      setSelectedId: setSelectedPresetOutfitId,
-      setImages: setPresetOutfitImages
+      getSelectedIds: () => selectedPresetOutfitIds,
+      setSelectedIds: setSelectedPresetOutfitIds,
+      setImageMap: setPresetOutfitImageMap
     },
     img2txt2img: {
-      getSelectedId: () => selectedImg2txt2imgOutfitId,
-      setSelectedId: setSelectedImg2txt2imgOutfitId,
-      setImages: setImg2txt2imgOutfitImages
+      getSelectedIds: () => selectedImg2txt2imgOutfitIds,
+      setSelectedIds: setSelectedImg2txt2imgOutfitIds,
+      setImageMap: setImg2txt2imgOutfitImageMap
     }
   };
 
   const referenceSectionConfig = {
     custom: {
-      getSelectedId: () => selectedCustomReferenceDbId,
-      setSelectedId: setSelectedCustomReferenceDbId,
-      setImages: setCustomReferenceDbImages
+      getSelectedIds: () => selectedCustomReferenceDbIds,
+      setSelectedIds: setSelectedCustomReferenceDbIds,
+      setImageMap: setCustomReferenceDbImageMap
     },
     'ig-picture': {
-      getSelectedId: () => selectedIgReferenceDbId,
-      setSelectedId: setSelectedIgReferenceDbId,
-      setImages: setIgReferenceDbImages
+      getSelectedIds: () => selectedIgReferenceDbIds,
+      setSelectedIds: setSelectedIgReferenceDbIds,
+      setImageMap: setIgReferenceDbImageMap
     },
     'preset-picture': {
-      getSelectedId: () => selectedPresetReferenceDbId,
-      setSelectedId: setSelectedPresetReferenceDbId,
-      setImages: setPresetReferenceDbImages
+      getSelectedIds: () => selectedPresetReferenceDbIds,
+      setSelectedIds: setSelectedPresetReferenceDbIds,
+      setImageMap: setPresetReferenceDbImageMap
     },
     img2txt2img: {
-      getSelectedId: () => selectedImg2txt2imgReferenceDbId,
-      setSelectedId: setSelectedImg2txt2imgReferenceDbId,
-      setImages: setImg2txt2imgReferenceDbImages
+      getSelectedIds: () => selectedImg2txt2imgReferenceDbIds,
+      setSelectedIds: setSelectedImg2txt2imgReferenceDbIds,
+      setImageMap: setImg2txt2imgReferenceDbImageMap
     }
   };
 
@@ -486,9 +496,13 @@ export default function App() {
     const section = outfitSectionConfig[sectionKey];
     if (!section) return;
 
-    if (section.getSelectedId() === outfit.id) {
-      section.setSelectedId(null);
-      section.setImages([]);
+    if (section.getSelectedIds().includes(outfit.id)) {
+      section.setSelectedIds((prev) => prev.filter((id) => id !== outfit.id));
+      section.setImageMap((prev) => {
+        const next = { ...prev };
+        delete next[outfit.id];
+        return next;
+      });
       addLog(`Removed outfit from ${sectionKey}.`);
       return;
     }
@@ -498,19 +512,16 @@ export default function App() {
       return;
     }
 
-    section.setSelectedId(outfit.id);
-    section.setImages([]);
     setOutfitImagesLoadingSection(sectionKey);
     addLog(`Loading outfit for ${sectionKey}: ${outfit.name}...`);
 
     try {
       const base64Images = await loadOutfitImages(outfit);
-      section.setImages(base64Images);
+      section.setSelectedIds((prev) => [...prev, outfit.id]);
+      section.setImageMap((prev) => ({ ...prev, [outfit.id]: base64Images }));
       addLog(`Loaded ${base64Images.length} outfit image(s) for ${sectionKey}.`);
     } catch (err) {
       console.error('Failed to load outfit images:', err);
-      section.setSelectedId(null);
-      section.setImages([]);
       addLog(`Error loading outfit images: ${err.message}`);
     } finally {
       setOutfitImagesLoadingSection(null);
@@ -521,9 +532,13 @@ export default function App() {
     const section = referenceSectionConfig[sectionKey];
     if (!section) return;
 
-    if (section.getSelectedId() === referenceItem.id) {
-      section.setSelectedId(null);
-      section.setImages([]);
+    if (section.getSelectedIds().includes(referenceItem.id)) {
+      section.setSelectedIds((prev) => prev.filter((id) => id !== referenceItem.id));
+      section.setImageMap((prev) => {
+        const next = { ...prev };
+        delete next[referenceItem.id];
+        return next;
+      });
       addLog(`Removed reference image from ${sectionKey}.`);
       return;
     }
@@ -533,26 +548,23 @@ export default function App() {
       return;
     }
 
-    section.setSelectedId(referenceItem.id);
-    section.setImages([]);
     setReferenceImagesLoadingSection(sectionKey);
     addLog(`Loading reference image for ${sectionKey}: ${referenceItem.name}...`);
 
     try {
       const base64Images = await loadOutfitImages(referenceItem);
-      section.setImages(base64Images);
+      section.setSelectedIds((prev) => [...prev, referenceItem.id]);
+      section.setImageMap((prev) => ({ ...prev, [referenceItem.id]: base64Images }));
       addLog(`Loaded ${base64Images.length} reference image(s) for ${sectionKey}.`);
     } catch (err) {
       console.error('Failed to load reference images:', err);
-      section.setSelectedId(null);
-      section.setImages([]);
       addLog(`Error loading reference images: ${err.message}`);
     } finally {
       setReferenceImagesLoadingSection(null);
     }
   };
 
-  const renderReferenceSelector = (sectionKey, selectedReferenceId) => {
+  const renderReferenceSelector = (sectionKey, selectedReferenceIds) => {
     const isReferenceLoading = referenceImagesLoadingSection === sectionKey;
 
     return (
@@ -595,7 +607,7 @@ export default function App() {
                 key={`${sectionKey}-${item.id}`}
                 onClick={() => handleReferenceSelectForSection(sectionKey, item)}
                 disabled={isReferenceLoading}
-                className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${selectedReferenceId === item.id
+                className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${selectedReferenceIds.includes(item.id)
                     ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
                     : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
                   } ${isReferenceLoading ? 'opacity-60 cursor-wait' : ''}`}
@@ -612,17 +624,17 @@ export default function App() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <span className={`block truncate ${selectedReferenceId === item.id ? 'text-indigo-300' : 'text-slate-300'}`}>
+                  <span className={`block truncate ${selectedReferenceIds.includes(item.id) ? 'text-indigo-300' : 'text-slate-300'}`}>
                     {item.name}
                   </span>
                   <span className="text-[10px] text-slate-600">
                     {item.images?.length || 0} image(s)
                   </span>
                 </div>
-                {selectedReferenceId === item.id && (
+                {selectedReferenceIds.includes(item.id) && (
                   <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
                 )}
-                {isReferenceLoading && selectedReferenceId === item.id && (
+                {isReferenceLoading && selectedReferenceIds.includes(item.id) && (
                   <Loader2 className="w-4 h-4 text-indigo-400 animate-spin flex-shrink-0" />
                 )}
               </button>
@@ -633,7 +645,7 @@ export default function App() {
     );
   };
 
-  const renderOutfitSelector = (sectionKey, selectedOutfitId) => {
+  const renderOutfitSelector = (sectionKey, selectedOutfitIds) => {
     const isOutfitLoading = outfitImagesLoadingSection === sectionKey;
 
     return (
@@ -676,7 +688,7 @@ export default function App() {
                 key={`${sectionKey}-${outfit.id}`}
                 onClick={() => handleOutfitSelectForSection(sectionKey, outfit)}
                 disabled={isOutfitLoading}
-                className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${selectedOutfitId === outfit.id
+                className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left text-sm ${selectedOutfitIds.includes(outfit.id)
                     ? 'bg-indigo-600/15 border-indigo-500/50 ring-1 ring-indigo-500/40'
                     : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
                   } ${isOutfitLoading ? 'opacity-60 cursor-wait' : ''}`}
@@ -693,17 +705,17 @@ export default function App() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <span className={`block truncate ${selectedOutfitId === outfit.id ? 'text-indigo-300' : 'text-slate-300'}`}>
+                  <span className={`block truncate ${selectedOutfitIds.includes(outfit.id) ? 'text-indigo-300' : 'text-slate-300'}`}>
                     {outfit.name}
                   </span>
                   <span className="text-[10px] text-slate-600">
                     {outfit.images?.length || 0} image(s)
                   </span>
                 </div>
-                {selectedOutfitId === outfit.id && (
+                {selectedOutfitIds.includes(outfit.id) && (
                   <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
                 )}
-                {isOutfitLoading && selectedOutfitId === outfit.id && (
+                {isOutfitLoading && selectedOutfitIds.includes(outfit.id) && (
                   <Loader2 className="w-4 h-4 text-indigo-400 animate-spin flex-shrink-0" />
                 )}
               </button>
@@ -2517,10 +2529,10 @@ export default function App() {
                           <button
                             onClick={() => {
                               setReferenceImages([]);
-                              setSelectedCustomReferenceDbId(null);
-                              setCustomReferenceDbImages([]);
-                              setSelectedCustomOutfitId(null);
-                              setCustomOutfitImages([]);
+                              setSelectedCustomReferenceDbIds([]);
+                              setCustomReferenceDbImageMap({});
+                              setSelectedCustomOutfitIds([]);
+                              setCustomOutfitImageMap({});
                             }}
                             className="text-red-400/70 hover:text-red-400"
                           >
@@ -2530,8 +2542,8 @@ export default function App() {
                       </div>
                     </div>
 
-                    {renderReferenceSelector('custom', selectedCustomReferenceDbId)}
-                    {renderOutfitSelector('custom', selectedCustomOutfitId)}
+                    {renderReferenceSelector('custom', selectedCustomReferenceDbIds)}
+                    {renderOutfitSelector('custom', selectedCustomOutfitIds)}
 
                     {/* Prompt Input */}
                     <div>
@@ -2884,10 +2896,10 @@ export default function App() {
                           <button
                             onClick={() => {
                               setIgSecondImages([]);
-                              setSelectedIgReferenceDbId(null);
-                              setIgReferenceDbImages([]);
-                              setSelectedIgOutfitId(null);
-                              setIgOutfitImages([]);
+                              setSelectedIgReferenceDbIds([]);
+                              setIgReferenceDbImageMap({});
+                              setSelectedIgOutfitIds([]);
+                              setIgOutfitImageMap({});
                             }}
                             className="text-red-400/70 hover:text-red-400"
                           >
@@ -2897,8 +2909,8 @@ export default function App() {
                       </div>
                     </div>
 
-                    {renderReferenceSelector('ig-picture', selectedIgReferenceDbId)}
-                    {renderOutfitSelector('ig-picture', selectedIgOutfitId)}
+                    {renderReferenceSelector('ig-picture', selectedIgReferenceDbIds)}
+                    {renderOutfitSelector('ig-picture', selectedIgOutfitIds)}
 
                     <button
                       onClick={generateIgPicture}
@@ -3214,10 +3226,10 @@ export default function App() {
                           <button
                             onClick={() => {
                               setPresetReferenceImages([]);
-                              setSelectedPresetReferenceDbId(null);
-                              setPresetReferenceDbImages([]);
-                              setSelectedPresetOutfitId(null);
-                              setPresetOutfitImages([]);
+                              setSelectedPresetReferenceDbIds([]);
+                              setPresetReferenceDbImageMap({});
+                              setSelectedPresetOutfitIds([]);
+                              setPresetOutfitImageMap({});
                             }}
                             className="text-red-400/70 hover:text-red-400"
                           >
@@ -3227,8 +3239,8 @@ export default function App() {
                       </div>
                     </div>
 
-                    {renderReferenceSelector('preset-picture', selectedPresetReferenceDbId)}
-                    {renderOutfitSelector('preset-picture', selectedPresetOutfitId)}
+                    {renderReferenceSelector('preset-picture', selectedPresetReferenceDbIds)}
+                    {renderOutfitSelector('preset-picture', selectedPresetOutfitIds)}
 
                     {/* Prompt Input */}
                     <div>
@@ -3630,10 +3642,10 @@ export default function App() {
                           <button
                             onClick={() => {
                               setImg2txt2imgReferenceImages([]);
-                              setSelectedImg2txt2imgReferenceDbId(null);
-                              setImg2txt2imgReferenceDbImages([]);
-                              setSelectedImg2txt2imgOutfitId(null);
-                              setImg2txt2imgOutfitImages([]);
+                              setSelectedImg2txt2imgReferenceDbIds([]);
+                              setImg2txt2imgReferenceDbImageMap({});
+                              setSelectedImg2txt2imgOutfitIds([]);
+                              setImg2txt2imgOutfitImageMap({});
                             }}
                             className="text-red-400/70 hover:text-red-400"
                           >
@@ -3643,8 +3655,8 @@ export default function App() {
                       </div>
                     </div>
 
-                    {renderReferenceSelector('img2txt2img', selectedImg2txt2imgReferenceDbId)}
-                    {renderOutfitSelector('img2txt2img', selectedImg2txt2imgOutfitId)}
+                    {renderReferenceSelector('img2txt2img', selectedImg2txt2imgReferenceDbIds)}
+                    {renderOutfitSelector('img2txt2img', selectedImg2txt2imgOutfitIds)}
 
                     <button
                       onClick={generateImg2Txt2Img}
