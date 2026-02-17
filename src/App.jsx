@@ -286,6 +286,7 @@ export default function App() {
   const [selectedIgReferenceDbIds, setSelectedIgReferenceDbIds] = useState([]);
   const [selectedPresetReferenceDbIds, setSelectedPresetReferenceDbIds] = useState([]);
   const [selectedImg2txt2imgReferenceDbIds, setSelectedImg2txt2imgReferenceDbIds] = useState([]);
+  const [selectedVideoReferenceDbIds, setSelectedVideoReferenceDbIds] = useState([]);
   const [customOutfitImageMap, setCustomOutfitImageMap] = useState({});
   const [igOutfitImageMap, setIgOutfitImageMap] = useState({});
   const [presetOutfitImageMap, setPresetOutfitImageMap] = useState({});
@@ -294,6 +295,7 @@ export default function App() {
   const [igReferenceDbImageMap, setIgReferenceDbImageMap] = useState({});
   const [presetReferenceDbImageMap, setPresetReferenceDbImageMap] = useState({});
   const [img2txt2imgReferenceDbImageMap, setImg2txt2imgReferenceDbImageMap] = useState({});
+  const [videoReferenceDbImageMap, setVideoReferenceDbImageMap] = useState({});
 
   const flattenImageMap = (imageMap) => Object.values(imageMap).flat();
   const customOutfitImages = flattenImageMap(customOutfitImageMap);
@@ -303,6 +305,7 @@ export default function App() {
   const igReferenceDbImages = flattenImageMap(igReferenceDbImageMap);
   const presetReferenceDbImages = flattenImageMap(presetReferenceDbImageMap);
   const img2txt2imgReferenceDbImages = flattenImageMap(img2txt2imgReferenceDbImageMap);
+  const videoReferenceDbImages = flattenImageMap(videoReferenceDbImageMap);
 
   // Img2Txt2Img specific state
   const [img2txt2imgCaptionImage, setImg2txt2imgCaptionImage] = useState(null);
@@ -318,7 +321,7 @@ export default function App() {
   const [img2txt2imgError, setImg2txt2imgError] = useState(null);
 
   // Video section specific state (Kling 2.6 Motion Control)
-  const [videoImage, setVideoImage] = useState(null);
+  const [videoCustomImage, setVideoCustomImage] = useState(null);
   const [videoFile, setVideoFile] = useState(null);
   const [videoCharacterOrientation, setVideoCharacterOrientation] = useState('video');
   const [videoKeepOriginalSound, setVideoKeepOriginalSound] = useState(true);
@@ -677,6 +680,11 @@ export default function App() {
       getSelectedIds: () => selectedImg2txt2imgReferenceDbIds,
       setSelectedIds: setSelectedImg2txt2imgReferenceDbIds,
       setImageMap: setImg2txt2imgReferenceDbImageMap
+    },
+    video: {
+      getSelectedIds: () => selectedVideoReferenceDbIds,
+      setSelectedIds: setSelectedVideoReferenceDbIds,
+      setImageMap: setVideoReferenceDbImageMap
     }
   };
 
@@ -741,8 +749,16 @@ export default function App() {
 
     try {
       const base64Images = await loadOutfitImages(referenceItem);
-      section.setSelectedIds((prev) => [...prev, referenceItem.id]);
-      section.setImageMap((prev) => ({ ...prev, [referenceItem.id]: base64Images }));
+      if (sectionKey === 'video') {
+        // Video accepts exactly one attached image from Notion.
+        section.setSelectedIds([referenceItem.id]);
+        section.setImageMap({ [referenceItem.id]: base64Images });
+        // Keep only one source active: selecting from Notion clears custom upload.
+        setVideoCustomImage(null);
+      } else {
+        section.setSelectedIds((prev) => [...prev, referenceItem.id]);
+        section.setImageMap((prev) => ({ ...prev, [referenceItem.id]: base64Images }));
+      }
       addLog(`Loaded ${base64Images.length} reference image(s) for ${sectionKey}.`);
     } catch (err) {
       console.error('Failed to load reference images:', err);
@@ -752,8 +768,12 @@ export default function App() {
     }
   };
 
-  const renderReferenceSelector = (sectionKey, selectedReferenceIds) => {
+  const renderReferenceSelector = (sectionKey, selectedReferenceIds, requiredType = null) => {
     const isReferenceLoading = referenceImagesLoadingSection === sectionKey;
+    const normalizedType = requiredType ? requiredType.toLowerCase() : null;
+    const filteredReferenceItems = normalizedType
+      ? notionReferenceImages.filter((item) => (item.type || '').toLowerCase() === normalizedType)
+      : notionReferenceImages;
 
     return (
       <div>
@@ -779,18 +799,18 @@ export default function App() {
           </div>
         )}
 
-        {referenceImagesLoading && notionReferenceImages.length === 0 ? (
+        {referenceImagesLoading && filteredReferenceItems.length === 0 ? (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="w-4 h-4 animate-spin text-indigo-400 mr-2" />
             <span className="text-xs text-slate-500">Loading reference images...</span>
           </div>
-        ) : notionReferenceImages.length === 0 ? (
+        ) : filteredReferenceItems.length === 0 ? (
           <div className="text-xs text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">
-            No reference images found. Check your Notion integration.
+            No reference images found{requiredType ? ` for type "${requiredType}"` : ''}. Check your Notion integration.
           </div>
         ) : (
           <div className="max-h-40 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-            {notionReferenceImages.map((item) => (
+            {filteredReferenceItems.map((item) => (
               <button
                 key={`${sectionKey}-${item.id}`}
                 onClick={() => handleReferenceSelectForSection(sectionKey, item)}
@@ -804,10 +824,10 @@ export default function App() {
                   <img
                     src={item.images[0]}
                     alt={item.name}
-                    className="w-8 h-8 rounded object-cover flex-shrink-0 border border-slate-700"
+                    className={`${sectionKey === 'video' ? 'w-14 h-14 rounded-lg' : 'w-8 h-8 rounded'} object-cover flex-shrink-0 border border-slate-700`}
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700">
+                  <div className={`${sectionKey === 'video' ? 'w-14 h-14 rounded-lg' : 'w-8 h-8 rounded'} bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-700`}>
                     <ImagePlus className="w-4 h-4 text-slate-600" />
                   </div>
                 )}
@@ -815,9 +835,16 @@ export default function App() {
                   <span className={`block truncate ${selectedReferenceIds.includes(item.id) ? 'text-indigo-300' : 'text-slate-300'}`}>
                     {item.name}
                   </span>
-                  <span className="text-[10px] text-slate-600">
-                    {item.images?.length || 0} image(s)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-600">
+                      {item.images?.length || 0} image(s)
+                    </span>
+                    {item.type && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 capitalize">
+                        {item.type}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {selectedReferenceIds.includes(item.id) && (
                   <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
@@ -2237,9 +2264,12 @@ export default function App() {
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      setVideoImage(reader.result);
+      // Keep only one source active: custom upload clears Notion selection.
+      setVideoCustomImage(reader.result);
+      setSelectedVideoReferenceDbIds([]);
+      setVideoReferenceDbImageMap({});
       setVideoError(null);
-      addLog(`Video image loaded: ${file.name}`);
+      addLog(`Video reference image loaded: ${file.name}`);
     };
     reader.readAsDataURL(file);
 
@@ -2267,12 +2297,13 @@ export default function App() {
   };
 
   const generateVideo = async () => {
+    const videoPrimaryReferenceImage = videoCustomImage || videoReferenceDbImages[0] || null;
     if (!apiKey) {
       setVideoError("Please enter your Wavespeed API Key first.");
       return;
     }
-    if (!videoImage) {
-      setVideoError("Please upload a reference image.");
+    if (!videoPrimaryReferenceImage) {
+      setVideoError('Please select a reel reference image from Notion.');
       return;
     }
     if (!videoFile) {
@@ -2294,7 +2325,7 @@ export default function App() {
     try {
       const payload = {
         character_orientation: videoCharacterOrientation,
-        image: videoImage,
+        image: videoPrimaryReferenceImage,
         keep_original_sound: videoKeepOriginalSound,
         video: videoFile
       };
@@ -2756,7 +2787,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {renderReferenceSelector('custom', selectedCustomReferenceDbIds)}
+                    {renderReferenceSelector('custom', selectedCustomReferenceDbIds, 'photo')}
                     {renderOutfitSelector('custom', selectedCustomOutfitIds)}
 
                     {/* Prompt Input */}
@@ -3110,7 +3141,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {renderReferenceSelector('ig-picture', selectedIgReferenceDbIds)}
+                    {renderReferenceSelector('ig-picture', selectedIgReferenceDbIds, 'photo')}
 
                     <button
                       onClick={generateIgPicture}
@@ -3459,7 +3490,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {renderReferenceSelector('preset-picture', selectedPresetReferenceDbIds)}
+                    {renderReferenceSelector('preset-picture', selectedPresetReferenceDbIds, 'photo')}
                     {renderOutfitSelector('preset-picture', selectedPresetOutfitIds)}
 
                     {/* Prompt Input */}
@@ -3876,7 +3907,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {renderReferenceSelector('img2txt2img', selectedImg2txt2imgReferenceDbIds)}
+                    {renderReferenceSelector('img2txt2img', selectedImg2txt2imgReferenceDbIds, 'photo')}
                     {renderOutfitSelector('img2txt2img', selectedImg2txt2imgOutfitIds)}
 
                     <button
@@ -4002,42 +4033,59 @@ export default function App() {
                   </div>
 
                   <p className="text-slate-400 text-sm mb-4">
-                    Upload a reference image and a motion video. The model will apply the motion from the video to your image.
+                    Select a reel reference image from Notion and upload a motion video. The model applies motion from the video to that selected image.
                   </p>
 
-                  {/* Reference Image Upload */}
+                  {/* Reference Image (single: custom upload OR Notion reel) */}
                   <div className="mb-4">
                     <label className="block text-xs text-slate-500 mb-2">
-                      Reference Image <span className="text-pink-400 ml-1">(Required)</span>
+                      Reference Image <span className="text-pink-400 ml-1">(Required, single)</span>
                     </label>
 
-                    {videoImage ? (
-                      <div className="relative group aspect-video rounded-lg overflow-hidden border border-slate-700 bg-black/20">
-                        <img src={videoImage} alt="Reference" className="w-full h-full object-cover" />
+                    {videoCustomImage ? (
+                      <div className="relative group h-80 rounded-xl overflow-hidden border border-slate-700 bg-black/20">
+                        <img src={videoCustomImage} alt="Custom reference" className="w-full h-full object-cover" />
+                        <span className="absolute bottom-2 left-2 text-[10px] px-1.5 py-0.5 rounded bg-slate-950/80 text-slate-200 border border-slate-500/30">
+                          CUSTOM
+                        </span>
                         <button
-                          onClick={() => setVideoImage(null)}
+                          onClick={() => setVideoCustomImage(null)}
                           className="absolute top-2 right-2 bg-black/60 hover:bg-red-500/80 text-white p-1 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
+                    ) : videoReferenceDbImages[0] ? (
+                      <div className="relative group h-80 rounded-xl overflow-hidden border border-slate-700 bg-black/20">
+                        <img src={videoReferenceDbImages[0]} alt="Reference" className="w-full h-full object-cover" />
+                        <span className="absolute bottom-2 left-2 text-[10px] px-1.5 py-0.5 rounded bg-pink-950/80 text-pink-200 border border-pink-500/30">
+                          FIRST REEL REF
+                        </span>
+                      </div>
                     ) : (
-                      <div
-                        onClick={() => videoImageRef.current?.click()}
-                        className="cursor-pointer border-2 border-dashed border-slate-800 rounded-lg aspect-video flex flex-col items-center justify-center hover:bg-slate-800/50 hover:border-pink-500/50 transition-all group"
-                      >
-                        <ImagePlus className="w-8 h-8 text-slate-600 group-hover:text-pink-400" />
-                        <span className="text-xs text-slate-600 group-hover:text-pink-400 mt-2">Upload Image</span>
+                      <div className="border border-dashed border-slate-800 rounded-lg p-3 text-xs text-slate-500">
+                        Upload your own reference image OR select one reel image from Notion below.
                       </div>
                     )}
-
-                    <input
-                      type="file"
-                      ref={videoImageRef}
-                      onChange={handleVideoImageUpload}
-                      accept="image/*"
-                      className="hidden"
-                    />
+                    <div className="mt-2">
+                      <button
+                        onClick={() => videoImageRef.current?.click()}
+                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        Upload Custom Image
+                      </button>
+                      <input
+                        type="file"
+                        ref={videoImageRef}
+                        onChange={handleVideoImageUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </div>
+                    <div className="mt-2">
+                      {renderReferenceSelector('video', selectedVideoReferenceDbIds, 'reel')}
+                    </div>
                   </div>
 
                   {/* Motion Video Upload */}
@@ -4137,8 +4185,8 @@ export default function App() {
                   {/* Generate Button */}
                   <button
                     onClick={generateVideo}
-                    disabled={videoLoading || !apiKey || !videoImage || !videoFile}
-                    className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${videoLoading || !apiKey || !videoImage || !videoFile
+                    disabled={videoLoading || !apiKey || (!videoCustomImage && videoReferenceDbImages.length === 0) || !videoFile}
+                    className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${videoLoading || !apiKey || (!videoCustomImage && videoReferenceDbImages.length === 0) || !videoFile
                       ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
                       : 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg shadow-pink-500/20 active:scale-95'
                       }`}

@@ -443,8 +443,19 @@ function notionPlugin() {
                 })
                 .filter(Boolean)
               : [];
+            const typeProperty = page.properties.type || page.properties.Type;
+            let type = null;
+            if (typeProperty?.type === 'select') {
+              type = typeProperty.select?.name || null;
+            } else if (typeProperty?.type === 'multi_select') {
+              type = typeProperty.multi_select?.[0]?.name || null;
+            } else if (typeProperty?.type === 'status') {
+              type = typeProperty.status?.name || null;
+            } else if (typeProperty?.type === 'rich_text') {
+              type = typeProperty.rich_text?.map((t) => t.plain_text).join('') || null;
+            }
 
-            return { id: page.id, name, images };
+            return { id: page.id, name, images, type };
           });
 
           res.setHeader('Content-Type', 'application/json');
