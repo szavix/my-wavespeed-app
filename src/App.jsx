@@ -326,7 +326,7 @@ export default function App() {
   const [videoCharacterOrientation, setVideoCharacterOrientation] = useState('video');
   const [videoKeepOriginalSound, setVideoKeepOriginalSound] = useState(true);
   const [videoPrompt, setVideoPrompt] = useState('');
-  const [videoNegativePrompt, setVideoNegativePrompt] = useState('');
+  const [videoNegativePrompt, setVideoNegativePrompt] = useState('extreme face expressions');
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoStatus, setVideoStatus] = useState(null);
   const [videoResultUrl, setVideoResultUrl] = useState(null);
