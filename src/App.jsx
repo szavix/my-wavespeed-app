@@ -269,6 +269,17 @@ export default function App() {
   const [presetStatus, setPresetStatus] = useState(null);
   const [presetResultUrl, setPresetResultUrl] = useState(null);
   const [presetError, setPresetError] = useState(null);
+  const [variationPrompts, setVariationPrompts] = useState([]);
+  const [variationPromptsLoading, setVariationPromptsLoading] = useState(false);
+  const [variationPromptsError, setVariationPromptsError] = useState(null);
+  const [selectedVariationPromptId, setSelectedVariationPromptId] = useState('');
+  const [variationPrompt, setVariationPrompt] = useState('');
+  const [variationSelectedModel, setVariationSelectedModel] = useState('google/nano-banana-pro/edit');
+  const [variationImages, setVariationImages] = useState([]);
+  const [variationLoading, setVariationLoading] = useState(false);
+  const [variationStatus, setVariationStatus] = useState(null);
+  const [variationResultUrl, setVariationResultUrl] = useState(null);
+  const [variationError, setVariationError] = useState(null);
 
   // Notion Outfits state
   const [notionOutfits, setNotionOutfits] = useState([]);
@@ -293,6 +304,7 @@ export default function App() {
   const [selectedIgReferenceDbIds, setSelectedIgReferenceDbIds] = useState([]);
   const [selectedPresetReferenceDbIds, setSelectedPresetReferenceDbIds] = useState([]);
   const [selectedImg2txt2imgReferenceDbIds, setSelectedImg2txt2imgReferenceDbIds] = useState([]);
+  const [selectedVariationReferenceDbIds, setSelectedVariationReferenceDbIds] = useState([]);
   const [selectedVideoReferenceDbIds, setSelectedVideoReferenceDbIds] = useState([]);
   const [customOutfitImageMap, setCustomOutfitImageMap] = useState({});
   const [igOutfitImageMap, setIgOutfitImageMap] = useState({});
@@ -302,6 +314,7 @@ export default function App() {
   const [igReferenceDbImageMap, setIgReferenceDbImageMap] = useState({});
   const [presetReferenceDbImageMap, setPresetReferenceDbImageMap] = useState({});
   const [img2txt2imgReferenceDbImageMap, setImg2txt2imgReferenceDbImageMap] = useState({});
+  const [variationReferenceDbImageMap, setVariationReferenceDbImageMap] = useState({});
   const [videoReferenceDbImageMap, setVideoReferenceDbImageMap] = useState({});
   const [customImageSequence, setCustomImageSequence] = useState([]);
   const [presetImageSequence, setPresetImageSequence] = useState([]);
@@ -315,6 +328,7 @@ export default function App() {
   const igReferenceDbImages = flattenImageMap(igReferenceDbImageMap);
   const presetReferenceDbImages = selectedPresetReferenceDbIds.flatMap((id) => presetReferenceDbImageMap[id] || []);
   const img2txt2imgReferenceDbImages = selectedImg2txt2imgReferenceDbIds.flatMap((id) => img2txt2imgReferenceDbImageMap[id] || []);
+  const variationReferenceDbImages = selectedVariationReferenceDbIds.flatMap((id) => variationReferenceDbImageMap[id] || []);
   const videoReferenceDbImages = flattenImageMap(videoReferenceDbImageMap);
 
   // Img2Txt2Img specific state
@@ -349,6 +363,7 @@ export default function App() {
   const img2txt2imgReferenceImagesRef = useRef(null);
   const videoImageRef = useRef(null);
   const videoFileRef = useRef(null);
+  const variationImageRef = useRef(null);
   const scheduleFetchSeqRef = useRef(0);
   const scheduleCacheRef = useRef({});
 
@@ -656,11 +671,32 @@ export default function App() {
     }
   };
 
+  const fetchVariationPrompts = async () => {
+    setVariationPromptsLoading(true);
+    setVariationPromptsError(null);
+    try {
+      const response = await fetch('/api/variation-prompts');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setVariationPrompts(data.prompts || []);
+    } catch (err) {
+      console.error('Failed to fetch variation prompts:', err);
+      setVariationPromptsError(err.message);
+      setVariationPrompts([]);
+    } finally {
+      setVariationPromptsLoading(false);
+    }
+  };
+
   // Fetch outfits on mount
   useEffect(() => {
     fetchNotionOutfits();
     fetchNotionReferenceImages();
     fetchPresetPrompts();
+    fetchVariationPrompts();
   }, []);
 
   useEffect(() => {
@@ -671,6 +707,17 @@ export default function App() {
       setPresetPrompt('');
     }
   }, [presetPrompts, selectedPresetTitle]);
+
+  useEffect(() => {
+    if (!selectedVariationPromptId) return;
+    const promptItem = variationPrompts.find((item) => item.id === selectedVariationPromptId);
+    if (promptItem) {
+      setVariationPrompt(promptItem.prompt || '');
+    } else {
+      setSelectedVariationPromptId('');
+      setVariationPrompt('');
+    }
+  }, [variationPrompts, selectedVariationPromptId]);
 
   useEffect(() => {
     if (scheduleModalOpen && scheduleDate) {
@@ -745,6 +792,11 @@ export default function App() {
       getSelectedIds: () => selectedImg2txt2imgReferenceDbIds,
       setSelectedIds: setSelectedImg2txt2imgReferenceDbIds,
       setImageMap: setImg2txt2imgReferenceDbImageMap
+    },
+    'create-variation': {
+      getSelectedIds: () => selectedVariationReferenceDbIds,
+      setSelectedIds: setSelectedVariationReferenceDbIds,
+      setImageMap: setVariationReferenceDbImageMap
     },
     video: {
       getSelectedIds: () => selectedVideoReferenceDbIds,
@@ -2051,6 +2103,192 @@ export default function App() {
     check();
   };
 
+  // --- Create Variation Handlers ---
+  const handleVariationPromptSelect = (promptId) => {
+    setSelectedVariationPromptId(promptId);
+    const selectedPrompt = variationPrompts.find((p) => p.id === promptId);
+    setVariationPrompt(selectedPrompt?.prompt || '');
+  };
+
+  const handleVariationImageUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    files.forEach((file) => {
+      if (file.size > 10 * 1024 * 1024) {
+        setVariationError(`File ${file.name} is too large. Skipping.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setVariationImages((prev) => [...prev, reader.result]);
+        setVariationError(null);
+        addLog(`Variation source loaded: ${file.name}`);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (variationImageRef.current) variationImageRef.current.value = '';
+  };
+
+  const removeVariationImage = (indexToRemove) => {
+    setVariationImages((prev) => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const generateVariation = async () => {
+    const combinedVariationImages = [...variationImages, ...variationReferenceDbImages];
+    if (!apiKey) {
+      setVariationError("Please enter your Wavespeed API Key first.");
+      return;
+    }
+    if (combinedVariationImages.length === 0) {
+      setVariationError("Please upload a source photo or select one from Notion.");
+      return;
+    }
+    if (!variationPrompt.trim()) {
+      setVariationError("Please select a variation prompt from Notion.");
+      return;
+    }
+
+    setVariationLoading(true);
+    setVariationError(null);
+    setVariationResultUrl(null);
+    setVariationStatus('queued');
+    setLogs([]);
+    addLog(`Starting variation with model: ${variationSelectedModel.includes('nano-banana-pro') ? 'Nano Banana Pro Edit' : 'Seedream v4.5 Edit'}`);
+
+    try {
+      let payload = {};
+      if (variationSelectedModel.includes('nano-banana-pro/edit')) {
+        payload = {
+          prompt: variationPrompt || " ",
+          images: combinedVariationImages,
+          resolution: resolution,
+          aspect_ratio: selectedDimension.id,
+          output_format: 'png',
+          enable_sync_mode: false,
+          enable_base64_output: false
+        };
+      } else if (variationSelectedModel.includes('seedream')) {
+        payload = {
+          size: `${selectedDimension.width}*${selectedDimension.height}`,
+          images: combinedVariationImages,
+          prompt: variationPrompt || " ",
+          enable_sync_mode: false,
+          enable_base64_output: false
+        };
+      }
+
+      addLog("Sending variation payload...");
+
+      const submitResponse = await fetch(`https://api.wavespeed.ai/api/v3/${variationSelectedModel}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!submitResponse.ok) {
+        const errData = await submitResponse.json();
+        const errMsg = errData.detail || errData.message || errData.error || JSON.stringify(errData);
+        throw new Error(errMsg);
+      }
+
+      const taskData = await submitResponse.json();
+      if (taskData.error) throw new Error(taskData.error);
+
+      let pollTarget = null;
+      if (taskData.urls && taskData.urls.get) {
+        pollTarget = taskData.urls.get;
+      } else {
+        const taskId = taskData.id || taskData.task_id || taskData.request_id || taskData.job_id || (taskData.data && taskData.data.id);
+        if (taskId) pollTarget = `https://api.wavespeed.ai/api/v3/predictions/${taskId}/result`;
+      }
+
+      const immediateOutput = extractResultUrl(taskData);
+      if (immediateOutput) {
+        setVariationStatus('completed');
+        setVariationResultUrl(immediateOutput);
+        setVariationLoading(false);
+        addLog("Variation completed instantly.");
+        return;
+      }
+      if (!pollTarget) {
+        throw new Error("Could not determine polling URL or find immediate output.");
+      }
+
+      pollVariationStatus(pollTarget);
+    } catch (err) {
+      console.error(err);
+      setVariationError(err.message);
+      setVariationLoading(false);
+      setVariationStatus('failed');
+      addLog(`Error: ${err.message}`);
+    }
+  };
+
+  const pollVariationStatus = async (pollUrl) => {
+    const startTime = Date.now();
+    const MAX_DURATION = 5 * 60 * 1000;
+    let consecutiveErrors = 0;
+
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const check = async () => {
+      if (Date.now() - startTime > MAX_DURATION) {
+        setVariationLoading(false);
+        setVariationError("Operation timed out. Task may still be processing on the server.");
+        return;
+      }
+
+      try {
+        const response = await fetch(pollUrl, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) {
+          if (response.status === 404) throw new Error("Task not found yet");
+          throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        consecutiveErrors = 0;
+        const currentStatus = data.status || (data.data && data.data.status);
+        setVariationStatus(currentStatus);
+
+        if (['succeeded', 'completed', 'SUCCESS'].includes(currentStatus)) {
+          const output = extractResultUrl(data);
+          if (output) {
+            setVariationResultUrl(output);
+            addLog("Variation generated successfully!");
+          } else {
+            setVariationError("Task complete but output missing.");
+          }
+          setVariationLoading(false);
+          return;
+        }
+        if (['failed', 'canceled', 'FAILURE'].includes(currentStatus)) {
+          setVariationLoading(false);
+          setVariationError(data.error || "Task failed.");
+          return;
+        }
+        setTimeout(check, 3000);
+      } catch (err) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 10) {
+          setVariationLoading(false);
+          setVariationError("Connection lost or task invalid.");
+        } else {
+          setTimeout(check, 3000);
+        }
+      }
+    };
+
+    check();
+  };
+
   // --- Img2Txt2Img Handlers ---
   const handleImg2Txt2ImgCaptionImageUpload = (e) => {
     const file = e.target.files[0];
@@ -2754,6 +2992,7 @@ export default function App() {
             {[
               { id: 'ig-picture', label: 'IG Picture', icon: Instagram },
               { id: 'preset-picture', label: 'Preset Picture', icon: Palette },
+              { id: 'create-variation', label: 'Create Variation', icon: ImagePlus },
               { id: 'img2txt2img', label: 'Img2Txt2Img', icon: FileText },
               { id: 'video', label: 'Video', icon: Film },
               { id: 'custom', label: 'Custom', icon: Settings }
@@ -3935,6 +4174,288 @@ export default function App() {
                   </div>
                 </div>
 
+              </div>
+            </div>
+          ) : selectedSection === 'create-variation' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+              {/* Left Panel: Create Variation Controls */}
+              <div className="lg:col-span-4 space-y-6">
+
+                {/* API Key Input */}
+                <div className="bg-slate-900/50 border border-slate-800 p-5 rounded-2xl shadow-xl">
+                  <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center">
+                    <Settings className="w-4 h-4 mr-2" /> Settings
+                  </h2>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Wavespeed API Key</label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => handleSaveKey(e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Variation Controls */}
+                <div className="bg-slate-900/50 border border-slate-800 p-5 rounded-2xl shadow-xl">
+                  <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center">
+                    <ImagePlus className="w-4 h-4 mr-2" /> Create Variation
+                  </h2>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Select Model</label>
+                      <div className="grid grid-cols-1 gap-2">
+                        {[
+                          { id: 'google/nano-banana-pro/edit', name: 'Nano Banana Pro Edit' },
+                          { id: 'bytedance/seedream-v4.5/edit', name: 'Seedream v4.5 Edit' }
+                        ].map((model) => (
+                          <button
+                            key={model.id}
+                            onClick={() => setVariationSelectedModel(model.id)}
+                            className={`flex items-center p-3 rounded-lg border transition-all text-left ${variationSelectedModel === model.id
+                              ? 'bg-indigo-600/10 border-indigo-500/50 ring-1 ring-indigo-500/50'
+                              : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                              }`}
+                          >
+                            <div className="p-2 rounded-md mr-3 bg-blue-500/10 text-blue-400">
+                              <ImageIcon size={16} />
+                            </div>
+                            <div className="text-sm font-medium text-slate-200">{model.name}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">
+                        {variationSelectedModel.includes('nano-banana-pro/edit') ? 'Aspect Ratio' : 'Dimensions'}
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {AVAILABLE_DIMENSIONS.map((dim) => {
+                          const Icon = dim.icon;
+                          return (
+                            <button
+                              key={dim.id}
+                              onClick={() => setSelectedDimension(dim)}
+                              className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${selectedDimension.id === dim.id
+                                ? 'bg-indigo-600/10 border-indigo-500/50 ring-1 ring-indigo-500/50 text-indigo-400'
+                                : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                                }`}
+                            >
+                              <Icon className="w-5 h-5 mb-1" />
+                              <span className="text-sm font-medium">{dim.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {variationSelectedModel.includes('nano-banana-pro') && (
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Resolution</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {['1k', '2k', '4k'].map((res) => (
+                            <button
+                              key={res}
+                              onClick={() => setResolution(res)}
+                              className={`py-2 px-3 rounded-lg border transition-all text-sm font-medium ${resolution === res
+                                ? 'bg-indigo-600/10 border-indigo-500/50 ring-1 ring-indigo-500/50 text-indigo-400'
+                                : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                                }`}
+                            >
+                              {res.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Source Photos</label>
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        {variationImages.map((img, idx) => (
+                          <div key={`variation-${idx}`} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20">
+                            <img src={img} alt={`Variation source ${idx + 1}`} className="w-full h-full object-cover" />
+                            <button
+                              onClick={() => removeVariationImage(idx)}
+                              className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-0.5 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                        {variationReferenceDbImages.map((img, idx) => (
+                          <div key={`variation-ref-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-indigo-500/30 bg-black/20">
+                            <img src={img} alt={`Notion reference ${idx + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
+                              REF
+                            </span>
+                          </div>
+                        ))}
+                        <div
+                          onClick={() => variationImageRef.current?.click()}
+                          className="cursor-pointer border-2 border-dashed border-slate-800 rounded-lg aspect-square flex flex-col items-center justify-center hover:bg-slate-800/50 hover:border-indigo-500/50 transition-all group"
+                        >
+                          <Upload className="w-6 h-6 text-slate-600 group-hover:text-indigo-400" />
+                          <span className="text-[10px] text-slate-600 group-hover:text-indigo-400 mt-1">Add</span>
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        {variationImages.length + variationReferenceDbImages.length} image(s) loaded ({variationImages.length} uploaded, {variationReferenceDbImages.length} reference)
+                      </div>
+                      <input
+                        type="file"
+                        ref={variationImageRef}
+                        onChange={handleVariationImageUpload}
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                      />
+                    </div>
+
+                    {renderReferenceSelector('create-variation', selectedVariationReferenceDbIds, 'photo')}
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-xs text-slate-500">Variation Prompt Preset</label>
+                        <button
+                          onClick={fetchVariationPrompts}
+                          disabled={variationPromptsLoading}
+                          className="text-xs text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors disabled:opacity-50"
+                          title="Refresh variation prompts"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${variationPromptsLoading ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </button>
+                      </div>
+                      <select
+                        value={selectedVariationPromptId}
+                        onChange={(e) => handleVariationPromptSelect(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                      >
+                        <option value="">
+                          {variationPromptsLoading ? '-- Loading prompts... --' : '-- Select a prompt --'}
+                        </option>
+                        {variationPrompts.map((promptItem) => (
+                          <option key={promptItem.id} value={promptItem.id}>
+                            {promptItem.title}
+                          </option>
+                        ))}
+                      </select>
+                      {variationPromptsError && (
+                        <p className="mt-1 text-[11px] text-red-400/80">{variationPromptsError}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Prompt</label>
+                      <textarea
+                        value={variationPrompt}
+                        onChange={(e) => setVariationPrompt(e.target.value)}
+                        placeholder="Select a Notion prompt, then edit if needed..."
+                        className="w-full h-28 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all resize-none"
+                      />
+                    </div>
+
+                    <button
+                      onClick={generateVariation}
+                      disabled={variationLoading || !apiKey || (variationImages.length + variationReferenceDbImages.length === 0) || !variationPrompt.trim()}
+                      className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${variationLoading || !apiKey || (variationImages.length + variationReferenceDbImages.length === 0) || !variationPrompt.trim()
+                        ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-500/20 active:scale-95'
+                        }`}
+                    >
+                      {variationLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Create Variation
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-black/40 border border-slate-800/50 p-4 rounded-xl h-48 overflow-y-auto font-mono text-xs">
+                  <div className="text-slate-500 mb-2 sticky top-0 bg-transparent uppercase tracking-wider text-[10px]">Activity Log</div>
+                  {logs.length === 0 && <span className="text-slate-700 italic">Ready to generate...</span>}
+                  {logs.map((log, i) => (
+                    <div key={i} className="text-slate-400 mb-1 border-b border-slate-800/30 pb-1 last:border-0">
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Panel: Output */}
+              <div className="lg:col-span-8">
+                <div className="bg-slate-900/50 border border-slate-800 rounded-2xl shadow-xl h-full min-h-[500px] flex flex-col relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 bg-gradient-to-b from-black/60 to-transparent">
+                    <div className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-xs font-mono text-slate-300">
+                      OUTPUT PREVIEW
+                    </div>
+                    {variationStatus && (
+                      <div className={`px-3 py-1 rounded-full text-xs font-bold border backdrop-blur-md flex items-center ${variationStatus === 'succeeded' || variationStatus === 'completed' || variationStatus === 'SUCCESS' ? 'bg-green-500/20 border-green-500/30 text-green-400' :
+                        variationStatus === 'failed' || variationStatus === 'FAILURE' ? 'bg-red-500/20 border-red-500/30 text-red-400' :
+                          'bg-blue-500/20 border-blue-500/30 text-blue-400'
+                        }`}>
+                        {variationStatus === 'succeeded' || variationStatus === 'completed' || variationStatus === 'SUCCESS' ? <CheckCircle2 className="w-3 h-3 mr-1" /> :
+                          variationStatus === 'failed' || variationStatus === 'FAILURE' ? <AlertCircle className="w-3 h-3 mr-1" /> :
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                        {variationStatus.toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800/30 via-slate-900 to-slate-950">
+                    {variationError && (
+                      <div className="text-center max-w-md p-6 bg-red-500/10 border border-red-500/20 rounded-xl">
+                        <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+                        <h3 className="text-red-400 font-medium mb-1">Generation Failed</h3>
+                        <p className="text-red-400/70 text-sm">{variationError}</p>
+                      </div>
+                    )}
+
+                    {!variationResultUrl && !variationLoading && !variationError && (
+                      <div className="text-center opacity-30">
+                        <div className="w-24 h-24 border-2 border-dashed border-slate-500 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                          <ImagePlus className="w-8 h-8 text-slate-500" />
+                        </div>
+                        <p className="text-slate-400">Upload a photo and choose a variation prompt</p>
+                      </div>
+                    )}
+
+                    {variationLoading && (
+                      <div className="text-center">
+                        <div className="relative w-20 h-20 mx-auto mb-6">
+                          <div className="absolute inset-0 border-4 border-indigo-500/30 rounded-full"></div>
+                          <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                        <p className="text-indigo-400 animate-pulse font-medium">Generating variation...</p>
+                        <p className="text-slate-500 text-xs mt-2">This may take a few moments</p>
+                      </div>
+                    )}
+
+                    {variationResultUrl && !variationLoading && (
+                      <div className="relative w-full h-full flex flex-col items-center justify-center">
+                        <img
+                          src={variationResultUrl}
+                          alt="Variation result"
+                          className="max-w-full max-h-[70vh] rounded-lg shadow-2xl shadow-black/50 border border-slate-800"
+                        />
+                        {renderImageActions(variationResultUrl, 'Create Variation')}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           ) : selectedSection === 'img2txt2img' ? (

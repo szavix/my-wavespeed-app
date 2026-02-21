@@ -11,6 +11,7 @@ function notionPlugin() {
   let referenceDatabaseId = '';
   let contentCalendarDatabaseId = '';
   let promptsDatabaseId = '';
+  let variationPromptsDatabaseId = '';
 
   return {
     name: 'notion-api',
@@ -23,6 +24,7 @@ function notionPlugin() {
         referenceDatabaseId = env.NOTION_REFERENCE_DATABASE_ID;
         contentCalendarDatabaseId = env.NOTION_CONTENT_CALENDAR_DATABASE_ID;
         promptsDatabaseId = env.NOTION_PROMPTS_DATABASE_ID;
+        variationPromptsDatabaseId = env.NOTION_VARIATION_PROMPTS_DATABASE_ID || env.NOTION_PROMPTS_DATABASE_ID;
         if (!apiKey || !outfitDatabaseId) {
           throw new Error('NOTION_API_KEY and NOTION_OUTFIT_DATABASE_ID must be set in .env.local');
         }
@@ -200,6 +202,77 @@ function notionPlugin() {
           res.end(JSON.stringify({ prompts }));
         } catch (err) {
           console.error('Prompts API error:', err);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+
+      // GET /api/variation-prompts — return all prompts for Create Variation section
+      server.middlewares.use('/api/variation-prompts', async (req, res) => {
+        if (req.method !== 'GET') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        try {
+          if (!variationPromptsDatabaseId) {
+            throw new Error('NOTION_VARIATION_PROMPTS_DATABASE_ID (or NOTION_PROMPTS_DATABASE_ID) must be set in .env.local');
+          }
+
+          const notion = getNotion();
+          let response;
+          if (notion.dataSources?.query) {
+            try {
+              response = await notion.dataSources.query({
+                data_source_id: variationPromptsDatabaseId,
+                page_size: 100,
+              });
+            } catch (queryErr) {
+              if (!notion.databases?.retrieve) throw queryErr;
+              const db = await notion.databases.retrieve({ database_id: variationPromptsDatabaseId });
+              const resolvedDataSourceId = db?.data_sources?.[0]?.id;
+              if (!resolvedDataSourceId) throw queryErr;
+              response = await notion.dataSources.query({
+                data_source_id: resolvedDataSourceId,
+                page_size: 100,
+              });
+            }
+          } else if (notion.databases?.query) {
+            response = await notion.databases.query({
+              database_id: variationPromptsDatabaseId,
+              page_size: 100,
+            });
+          } else {
+            throw new Error('Unsupported Notion SDK: no query method found on dataSources or databases.');
+          }
+
+          const prompts = (response.results || [])
+            .map((page) => {
+              const props = page?.properties || {};
+              const titleProp = Object.values(props).find((prop) => prop?.type === 'title');
+              const textProp = Object.entries(props).find(([name]) => /^text$/i.test(name))?.[1] ||
+                Object.entries(props).find(([name]) => /^prompt$/i.test(name))?.[1] ||
+                Object.values(props).find((prop) => prop?.type === 'rich_text');
+
+              const title = titleProp?.title?.length
+                ? titleProp.title.map((t) => t.plain_text).join('')
+                : 'Untitled';
+              const prompt = textProp?.type === 'rich_text'
+                ? textProp.rich_text?.map((t) => t.plain_text).join('') || ''
+                : textProp?.type === 'title'
+                  ? textProp.title?.map((t) => t.plain_text).join('') || ''
+                  : '';
+
+              return { id: page.id, title, prompt };
+            })
+            .filter((item) => item.prompt);
+
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ prompts }));
+        } catch (err) {
+          console.error('Variation prompts API error:', err);
           res.statusCode = 500;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ error: err.message }));
