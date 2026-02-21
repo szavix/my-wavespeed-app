@@ -382,9 +382,9 @@ function notionPlugin() {
         }
       });
 
-      // GET /api/reference-images — returns list of reference images from second database
+      // /api/reference-images — GET list + POST add generated image to reference database
       server.middlewares.use('/api/reference-images', async (req, res) => {
-        if (req.method !== 'GET') {
+        if (!['GET', 'POST'].includes(req.method)) {
           res.statusCode = 405;
           res.end(JSON.stringify({ error: 'Method not allowed' }));
           return;
@@ -396,31 +396,110 @@ function notionPlugin() {
           }
 
           const notion = getNotion();
-          let response;
-          if (notion.dataSources?.query) {
-            try {
-              response = await notion.dataSources.query({
-                data_source_id: referenceDatabaseId,
+          const queryReferenceImages = async () => {
+            let response;
+            if (notion.dataSources?.query) {
+              try {
+                response = await notion.dataSources.query({
+                  data_source_id: referenceDatabaseId,
+                  page_size: 100,
+                });
+              } catch (queryErr) {
+                if (!notion.databases?.retrieve) throw queryErr;
+                const db = await notion.databases.retrieve({ database_id: referenceDatabaseId });
+                const resolvedDataSourceId = db?.data_sources?.[0]?.id;
+                if (!resolvedDataSourceId) throw queryErr;
+                response = await notion.dataSources.query({
+                  data_source_id: resolvedDataSourceId,
+                  page_size: 100,
+                });
+              }
+            } else if (notion.databases?.query) {
+              response = await notion.databases.query({
+                database_id: referenceDatabaseId,
                 page_size: 100,
               });
-            } catch (queryErr) {
-              if (!notion.databases?.retrieve) throw queryErr;
-              const db = await notion.databases.retrieve({ database_id: referenceDatabaseId });
-              const resolvedDataSourceId = db?.data_sources?.[0]?.id;
-              if (!resolvedDataSourceId) throw queryErr;
-              response = await notion.dataSources.query({
-                data_source_id: resolvedDataSourceId,
-                page_size: 100,
-              });
+            } else {
+              throw new Error('Unsupported Notion SDK: no query method found on dataSources or databases.');
             }
-          } else if (notion.databases?.query) {
-            response = await notion.databases.query({
-              database_id: referenceDatabaseId,
-              page_size: 100,
+            return response;
+          };
+
+          if (req.method === 'POST') {
+            let rawBody = '';
+            await new Promise((resolve, reject) => {
+              req.on('data', (chunk) => { rawBody += chunk; });
+              req.on('end', resolve);
+              req.on('error', reject);
             });
-          } else {
-            throw new Error('Unsupported Notion SDK: no query method found on dataSources or databases.');
+            const body = rawBody ? JSON.parse(rawBody) : {};
+            const { name, imageUrl, type } = body;
+            const normalizedType = String(type || '').trim().toLowerCase();
+
+            if (!name || !imageUrl || !['photo', 'reel'].includes(normalizedType)) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'name, imageUrl, and type (photo or reel) are required.' }));
+              return;
+            }
+
+            const database = await notion.databases.retrieve({ database_id: referenceDatabaseId });
+            let properties = database.properties || {};
+            if (Object.keys(properties).length === 0 && notion.dataSources?.retrieve) {
+              const dataSourceId = database?.data_sources?.[0]?.id;
+              if (dataSourceId) {
+                const dataSource = await notion.dataSources.retrieve({ data_source_id: dataSourceId });
+                properties = dataSource?.properties || dataSource?.data_source?.properties || {};
+              }
+            }
+            const entries = Object.entries(properties);
+            const findByType = (propType) => entries.find(([, prop]) => prop?.type === propType)?.[0] || null;
+            const findByNameAndType = (nameRegex, types) =>
+              entries.find(([propName, prop]) => nameRegex.test(propName) && types.includes(prop?.type))?.[0] || null;
+
+            const titleKey = findByNameAndType(/^name$/i, ['title']) || findByType('title');
+            const filesKey = findByNameAndType(/image|file|media/i, ['files']) || findByType('files');
+            const typeKey = findByNameAndType(/^type$/i, ['select', 'multi_select', 'status', 'rich_text']) ||
+              findByNameAndType(/type|category/i, ['select', 'multi_select', 'status', 'rich_text']);
+
+            if (!titleKey || !filesKey || !typeKey) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Could not map required Notion properties (name/title, image/files, type).' }));
+              return;
+            }
+
+            const createProperties = {
+              [titleKey]: {
+                title: [{ type: 'text', text: { content: name } }],
+              },
+              [filesKey]: {
+                files: [{ name: 'Generated image', type: 'external', external: { url: imageUrl } }],
+              },
+            };
+
+            const typeProp = properties[typeKey];
+            if (typeProp?.type === 'select') {
+              createProperties[typeKey] = { select: { name: normalizedType } };
+            } else if (typeProp?.type === 'multi_select') {
+              createProperties[typeKey] = { multi_select: [{ name: normalizedType }] };
+            } else if (typeProp?.type === 'status') {
+              createProperties[typeKey] = { status: { name: normalizedType } };
+            } else if (typeProp?.type === 'rich_text') {
+              createProperties[typeKey] = { rich_text: [{ type: 'text', text: { content: normalizedType } }] };
+            }
+
+            await notion.pages.create({
+              parent: { database_id: referenceDatabaseId },
+              properties: createProperties,
+            });
+
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: true }));
+            return;
           }
+
+          const response = await queryReferenceImages();
 
           const referenceImages = response.results.map((page) => {
             const nameProperty = Object.values(page.properties || {}).find(

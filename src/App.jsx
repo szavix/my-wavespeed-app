@@ -240,6 +240,13 @@ export default function App() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [referenceSaveModalOpen, setReferenceSaveModalOpen] = useState(false);
+  const [referenceSaveImageUrl, setReferenceSaveImageUrl] = useState('');
+  const [referenceSaveTitle, setReferenceSaveTitle] = useState('Generated Content');
+  const [referenceSaveType, setReferenceSaveType] = useState('photo');
+  const [referenceSaveLoading, setReferenceSaveLoading] = useState(false);
+  const [referenceSaveError, setReferenceSaveError] = useState(null);
+  const [referenceSaveSuccess, setReferenceSaveSuccess] = useState(null);
 
   // IG Picture specific state
   const [igSecondImages, setIgSecondImages] = useState([]);
@@ -296,15 +303,18 @@ export default function App() {
   const [presetReferenceDbImageMap, setPresetReferenceDbImageMap] = useState({});
   const [img2txt2imgReferenceDbImageMap, setImg2txt2imgReferenceDbImageMap] = useState({});
   const [videoReferenceDbImageMap, setVideoReferenceDbImageMap] = useState({});
+  const [customImageSequence, setCustomImageSequence] = useState([]);
+  const [presetImageSequence, setPresetImageSequence] = useState([]);
+  const [img2txt2imgImageSequence, setImg2txt2imgImageSequence] = useState([]);
 
   const flattenImageMap = (imageMap) => Object.values(imageMap).flat();
-  const customOutfitImages = flattenImageMap(customOutfitImageMap);
-  const presetOutfitImages = flattenImageMap(presetOutfitImageMap);
-  const img2txt2imgOutfitImages = flattenImageMap(img2txt2imgOutfitImageMap);
-  const customReferenceDbImages = flattenImageMap(customReferenceDbImageMap);
+  const customOutfitImages = selectedCustomOutfitIds.flatMap((id) => customOutfitImageMap[id] || []);
+  const presetOutfitImages = selectedPresetOutfitIds.flatMap((id) => presetOutfitImageMap[id] || []);
+  const img2txt2imgOutfitImages = selectedImg2txt2imgOutfitIds.flatMap((id) => img2txt2imgOutfitImageMap[id] || []);
+  const customReferenceDbImages = selectedCustomReferenceDbIds.flatMap((id) => customReferenceDbImageMap[id] || []);
   const igReferenceDbImages = flattenImageMap(igReferenceDbImageMap);
-  const presetReferenceDbImages = flattenImageMap(presetReferenceDbImageMap);
-  const img2txt2imgReferenceDbImages = flattenImageMap(img2txt2imgReferenceDbImageMap);
+  const presetReferenceDbImages = selectedPresetReferenceDbIds.flatMap((id) => presetReferenceDbImageMap[id] || []);
+  const img2txt2imgReferenceDbImages = selectedImg2txt2imgReferenceDbIds.flatMap((id) => img2txt2imgReferenceDbImageMap[id] || []);
   const videoReferenceDbImages = flattenImageMap(videoReferenceDbImageMap);
 
   // Img2Txt2Img specific state
@@ -513,6 +523,54 @@ export default function App() {
     }
   };
 
+  const openReferenceSaveModal = (imageUrl, defaultTitle = 'Generated Content') => {
+    setReferenceSaveImageUrl(imageUrl);
+    setReferenceSaveTitle(defaultTitle || 'Generated Content');
+    setReferenceSaveType('photo');
+    setReferenceSaveError(null);
+    setReferenceSaveSuccess(null);
+    setReferenceSaveModalOpen(true);
+  };
+
+  const closeReferenceSaveModal = () => {
+    if (referenceSaveLoading) return;
+    setReferenceSaveModalOpen(false);
+  };
+
+  const saveGeneratedToReferenceTable = async () => {
+    if (!referenceSaveImageUrl || !referenceSaveTitle.trim()) {
+      setReferenceSaveError('Please provide a name for this reference image.');
+      return;
+    }
+
+    setReferenceSaveLoading(true);
+    setReferenceSaveError(null);
+    setReferenceSaveSuccess(null);
+    try {
+      const response = await fetch('/api/reference-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: referenceSaveTitle.trim(),
+          imageUrl: referenceSaveImageUrl,
+          type: referenceSaveType,
+        }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+
+      setReferenceSaveSuccess('Saved to Notion reference table.');
+      await fetchNotionReferenceImages();
+    } catch (err) {
+      console.error(err);
+      setReferenceSaveError(err.message || 'Failed to save to Notion reference table.');
+    } finally {
+      setReferenceSaveLoading(false);
+    }
+  };
+
   const renderImageActions = (url, title = 'Generated Content') => (
     <div className="mt-3 flex items-center gap-2">
       <button
@@ -528,6 +586,13 @@ export default function App() {
       >
         <CalendarDays className="w-3.5 h-3.5" />
         Schedule
+      </button>
+      <button
+        onClick={() => openReferenceSaveModal(url, title)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-300 text-xs transition-colors"
+      >
+        <ImagePlus className="w-3.5 h-3.5" />
+        Add to Reference
       </button>
     </div>
   );
@@ -688,6 +753,16 @@ export default function App() {
     }
   };
 
+  const removeCustomSequenceEntries = (predicate) => {
+    setCustomImageSequence((prev) => prev.filter((entry) => !predicate(entry)));
+  };
+  const removePresetSequenceEntries = (predicate) => {
+    setPresetImageSequence((prev) => prev.filter((entry) => !predicate(entry)));
+  };
+  const removeImg2txt2imgSequenceEntries = (predicate) => {
+    setImg2txt2imgImageSequence((prev) => prev.filter((entry) => !predicate(entry)));
+  };
+
   const handleOutfitSelectForSection = async (sectionKey, outfit) => {
     const section = outfitSectionConfig[sectionKey];
     if (!section) return;
@@ -699,6 +774,13 @@ export default function App() {
         delete next[outfit.id];
         return next;
       });
+      if (sectionKey === 'custom') {
+        removeCustomSequenceEntries((entry) => entry.kind === 'outfit' && entry.id === outfit.id);
+      } else if (sectionKey === 'preset-picture') {
+        removePresetSequenceEntries((entry) => entry.kind === 'outfit' && entry.id === outfit.id);
+      } else if (sectionKey === 'img2txt2img') {
+        removeImg2txt2imgSequenceEntries((entry) => entry.kind === 'outfit' && entry.id === outfit.id);
+      }
       addLog(`Removed outfit from ${sectionKey}.`);
       return;
     }
@@ -715,6 +797,13 @@ export default function App() {
       const base64Images = await loadOutfitImages(outfit);
       section.setSelectedIds((prev) => [...prev, outfit.id]);
       section.setImageMap((prev) => ({ ...prev, [outfit.id]: base64Images }));
+      if (sectionKey === 'custom') {
+        setCustomImageSequence((prev) => [...prev, { kind: 'outfit', id: outfit.id }]);
+      } else if (sectionKey === 'preset-picture') {
+        setPresetImageSequence((prev) => [...prev, { kind: 'outfit', id: outfit.id }]);
+      } else if (sectionKey === 'img2txt2img') {
+        setImg2txt2imgImageSequence((prev) => [...prev, { kind: 'outfit', id: outfit.id }]);
+      }
       addLog(`Loaded ${base64Images.length} outfit image(s) for ${sectionKey}.`);
     } catch (err) {
       console.error('Failed to load outfit images:', err);
@@ -735,6 +824,13 @@ export default function App() {
         delete next[referenceItem.id];
         return next;
       });
+      if (sectionKey === 'custom') {
+        removeCustomSequenceEntries((entry) => entry.kind === 'reference' && entry.id === referenceItem.id);
+      } else if (sectionKey === 'preset-picture') {
+        removePresetSequenceEntries((entry) => entry.kind === 'reference' && entry.id === referenceItem.id);
+      } else if (sectionKey === 'img2txt2img') {
+        removeImg2txt2imgSequenceEntries((entry) => entry.kind === 'reference' && entry.id === referenceItem.id);
+      }
       addLog(`Removed reference image from ${sectionKey}.`);
       return;
     }
@@ -758,6 +854,13 @@ export default function App() {
       } else {
         section.setSelectedIds((prev) => [...prev, referenceItem.id]);
         section.setImageMap((prev) => ({ ...prev, [referenceItem.id]: base64Images }));
+        if (sectionKey === 'custom') {
+          setCustomImageSequence((prev) => [...prev, { kind: 'reference', id: referenceItem.id }]);
+        } else if (sectionKey === 'preset-picture') {
+          setPresetImageSequence((prev) => [...prev, { kind: 'reference', id: referenceItem.id }]);
+        } else if (sectionKey === 'img2txt2img') {
+          setImg2txt2imgImageSequence((prev) => [...prev, { kind: 'reference', id: referenceItem.id }]);
+        }
       }
       addLog(`Loaded ${base64Images.length} reference image(s) for ${sectionKey}.`);
     } catch (err) {
@@ -1067,7 +1170,9 @@ export default function App() {
 
       const reader = new FileReader();
       reader.onloadend = () => {
-        setReferenceImages(prev => [...prev, reader.result]);
+        const manualId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setReferenceImages(prev => [...prev, { id: manualId, url: reader.result }]);
+        setCustomImageSequence((prev) => [...prev, { kind: 'manual', id: manualId }]);
         setError(null);
         addLog(`Loaded: ${file.name}`);
       };
@@ -1077,13 +1182,63 @@ export default function App() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const removeImage = (indexToRemove) => {
-    setReferenceImages(prev => prev.filter((_, index) => index !== indexToRemove));
+  const removeImage = (manualIdToRemove) => {
+    setReferenceImages((prev) => prev.filter((item) => item.id !== manualIdToRemove));
+    removeCustomSequenceEntries((entry) => entry.kind === 'manual' && entry.id === manualIdToRemove);
+  };
+
+  const moveItem = (items, fromIndex, toIndex) => {
+    if (toIndex < 0 || toIndex >= items.length) return items;
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  };
+
+  const moveCustomSequenceEntry = (index, direction) => {
+    const target = direction === 'left' ? index - 1 : index + 1;
+    setCustomImageSequence((prev) => moveItem(prev, index, target));
+  };
+
+  const removeCustomReferenceSelection = (idToRemove) => {
+    setSelectedCustomReferenceDbIds((prev) => prev.filter((id) => id !== idToRemove));
+    setCustomReferenceDbImageMap((prev) => {
+      const next = { ...prev };
+      delete next[idToRemove];
+      return next;
+    });
+    removeCustomSequenceEntries((entry) => entry.kind === 'reference' && entry.id === idToRemove);
+  };
+
+  const removeCustomOutfitSelection = (idToRemove) => {
+    setSelectedCustomOutfitIds((prev) => prev.filter((id) => id !== idToRemove));
+    setCustomOutfitImageMap((prev) => {
+      const next = { ...prev };
+      delete next[idToRemove];
+      return next;
+    });
+    removeCustomSequenceEntries((entry) => entry.kind === 'outfit' && entry.id === idToRemove);
+  };
+
+  const getCustomCombinedReferenceImages = () => {
+    const manualImageMap = Object.fromEntries(referenceImages.map((img) => [img.id, img.url]));
+    return customImageSequence.flatMap((entry) => {
+      if (entry.kind === 'manual') {
+        return manualImageMap[entry.id] ? [manualImageMap[entry.id]] : [];
+      }
+      if (entry.kind === 'reference') {
+        return customReferenceDbImageMap[entry.id] || [];
+      }
+      if (entry.kind === 'outfit') {
+        return customOutfitImageMap[entry.id] || [];
+      }
+      return [];
+    });
   };
 
   // --- API Interaction (Wavespeed) ---
   const generateContent = async () => {
-    const combinedReferenceImages = [...referenceImages, ...customReferenceDbImages, ...customOutfitImages];
+    const combinedReferenceImages = getCustomCombinedReferenceImages();
     if (!apiKey) {
       setError("Please enter your Wavespeed API Key first.");
       return;
@@ -1660,7 +1815,9 @@ export default function App() {
 
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPresetReferenceImages(prev => [...prev, reader.result]);
+        const manualId = `preset-manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setPresetReferenceImages((prev) => [...prev, { id: manualId, url: reader.result }]);
+        setPresetImageSequence((prev) => [...prev, { kind: 'manual', id: manualId }]);
         setPresetError(null);
         addLog(`Loaded: ${file.name}`);
       };
@@ -1670,12 +1827,54 @@ export default function App() {
     if (presetFileInputRef.current) presetFileInputRef.current.value = '';
   };
 
-  const removePresetImage = (indexToRemove) => {
-    setPresetReferenceImages(prev => prev.filter((_, index) => index !== indexToRemove));
+  const removePresetImage = (manualIdToRemove) => {
+    setPresetReferenceImages((prev) => prev.filter((item) => item.id !== manualIdToRemove));
+    removePresetSequenceEntries((entry) => entry.kind === 'manual' && entry.id === manualIdToRemove);
+  };
+
+  const movePresetSequenceEntry = (index, direction) => {
+    const target = direction === 'left' ? index - 1 : index + 1;
+    setPresetImageSequence((prev) => moveItem(prev, index, target));
+  };
+
+  const removePresetReferenceSelection = (idToRemove) => {
+    setSelectedPresetReferenceDbIds((prev) => prev.filter((id) => id !== idToRemove));
+    setPresetReferenceDbImageMap((prev) => {
+      const next = { ...prev };
+      delete next[idToRemove];
+      return next;
+    });
+    removePresetSequenceEntries((entry) => entry.kind === 'reference' && entry.id === idToRemove);
+  };
+
+  const removePresetOutfitSelection = (idToRemove) => {
+    setSelectedPresetOutfitIds((prev) => prev.filter((id) => id !== idToRemove));
+    setPresetOutfitImageMap((prev) => {
+      const next = { ...prev };
+      delete next[idToRemove];
+      return next;
+    });
+    removePresetSequenceEntries((entry) => entry.kind === 'outfit' && entry.id === idToRemove);
+  };
+
+  const getPresetCombinedReferenceImages = () => {
+    const manualImageMap = Object.fromEntries(presetReferenceImages.map((img) => [img.id, img.url]));
+    return presetImageSequence.flatMap((entry) => {
+      if (entry.kind === 'manual') {
+        return manualImageMap[entry.id] ? [manualImageMap[entry.id]] : [];
+      }
+      if (entry.kind === 'reference') {
+        return presetReferenceDbImageMap[entry.id] || [];
+      }
+      if (entry.kind === 'outfit') {
+        return presetOutfitImageMap[entry.id] || [];
+      }
+      return [];
+    });
   };
 
   const generatePresetPicture = async () => {
-    const combinedPresetImages = [...presetReferenceImages, ...presetReferenceDbImages, ...presetOutfitImages];
+    const combinedPresetImages = getPresetCombinedReferenceImages();
     if (!apiKey) {
       setPresetError("Please enter your Wavespeed API Key first.");
       return;
@@ -2060,7 +2259,9 @@ export default function App() {
 
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImg2txt2imgReferenceImages(prev => [...prev, reader.result]);
+        const manualId = `img2txt2img-manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setImg2txt2imgReferenceImages((prev) => [...prev, { id: manualId, url: reader.result }]);
+        setImg2txt2imgImageSequence((prev) => [...prev, { kind: 'manual', id: manualId }]);
         setImg2txt2imgError(null);
         addLog(`Loaded: ${file.name}`);
       };
@@ -2070,12 +2271,54 @@ export default function App() {
     if (img2txt2imgReferenceImagesRef.current) img2txt2imgReferenceImagesRef.current.value = '';
   };
 
-  const removeImg2Txt2ImgReferenceImage = (indexToRemove) => {
-    setImg2txt2imgReferenceImages(prev => prev.filter((_, index) => index !== indexToRemove));
+  const removeImg2Txt2ImgReferenceImage = (manualIdToRemove) => {
+    setImg2txt2imgReferenceImages((prev) => prev.filter((item) => item.id !== manualIdToRemove));
+    removeImg2txt2imgSequenceEntries((entry) => entry.kind === 'manual' && entry.id === manualIdToRemove);
+  };
+
+  const moveImg2txt2imgSequenceEntry = (index, direction) => {
+    const target = direction === 'left' ? index - 1 : index + 1;
+    setImg2txt2imgImageSequence((prev) => moveItem(prev, index, target));
+  };
+
+  const removeImg2txt2imgReferenceSelection = (idToRemove) => {
+    setSelectedImg2txt2imgReferenceDbIds((prev) => prev.filter((id) => id !== idToRemove));
+    setImg2txt2imgReferenceDbImageMap((prev) => {
+      const next = { ...prev };
+      delete next[idToRemove];
+      return next;
+    });
+    removeImg2txt2imgSequenceEntries((entry) => entry.kind === 'reference' && entry.id === idToRemove);
+  };
+
+  const removeImg2txt2imgOutfitSelection = (idToRemove) => {
+    setSelectedImg2txt2imgOutfitIds((prev) => prev.filter((id) => id !== idToRemove));
+    setImg2txt2imgOutfitImageMap((prev) => {
+      const next = { ...prev };
+      delete next[idToRemove];
+      return next;
+    });
+    removeImg2txt2imgSequenceEntries((entry) => entry.kind === 'outfit' && entry.id === idToRemove);
+  };
+
+  const getImg2txt2imgCombinedReferenceImages = () => {
+    const manualImageMap = Object.fromEntries(img2txt2imgReferenceImages.map((img) => [img.id, img.url]));
+    return img2txt2imgImageSequence.flatMap((entry) => {
+      if (entry.kind === 'manual') {
+        return manualImageMap[entry.id] ? [manualImageMap[entry.id]] : [];
+      }
+      if (entry.kind === 'reference') {
+        return img2txt2imgReferenceDbImageMap[entry.id] || [];
+      }
+      if (entry.kind === 'outfit') {
+        return img2txt2imgOutfitImageMap[entry.id] || [];
+      }
+      return [];
+    });
   };
 
   const generateImg2Txt2Img = async () => {
-    const combinedImg2txt2imgImages = [...img2txt2imgReferenceImages, ...img2txt2imgReferenceDbImages, ...img2txt2imgOutfitImages];
+    const combinedImg2txt2imgImages = getImg2txt2imgCombinedReferenceImages();
     if (!apiKey) {
       setImg2txt2imgError("Please enter your Wavespeed API Key first.");
       return;
@@ -2721,33 +2964,71 @@ export default function App() {
 
                       {/* Grid of attached images (manual + Notion selections) */}
                       <div className="grid grid-cols-3 gap-2 mb-2">
-                        {referenceImages.map((img, idx) => (
-                          <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20">
-                            <img src={img} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <button
-                              onClick={() => removeImage(idx)}
-                              className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-0.5 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                        {customImageSequence.map((entry, sequenceIndex) => {
+                          const isManual = entry.kind === 'manual';
+                          const isReference = entry.kind === 'reference';
+                          const images = isManual
+                            ? (referenceImages.find((item) => item.id === entry.id)?.url ? [referenceImages.find((item) => item.id === entry.id).url] : [])
+                            : isReference
+                              ? (customReferenceDbImageMap[entry.id] || [])
+                              : (customOutfitImageMap[entry.id] || []);
+
+                          return images.map((img, imgIdx) => (
+                            <div
+                              key={`${entry.kind}-${entry.id}-${imgIdx}`}
+                              className={`relative group aspect-square rounded-lg overflow-hidden bg-black/20 ${isManual
+                                ? 'border border-slate-700'
+                                : isReference
+                                  ? 'border border-indigo-500/30'
+                                  : 'border border-violet-500/30'
+                                }`}
                             >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                        {customReferenceDbImages.map((img, idx) => (
-                          <div key={`custom-ref-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-indigo-500/30 bg-black/20">
-                            <img src={img} alt={`Notion reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
-                              REF
-                            </span>
-                          </div>
-                        ))}
-                        {customOutfitImages.map((img, idx) => (
-                          <div key={`custom-outfit-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-violet-500/30 bg-black/20">
-                            <img src={img} alt={`Outfit reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-violet-950/80 text-violet-200 border border-violet-500/30">
-                              OUTFIT
-                            </span>
-                          </div>
-                        ))}
+                              <img src={img} alt={`Reference ${sequenceIndex + 1}`} className="w-full h-full object-cover" />
+
+                              {imgIdx === 0 && (
+                                <div className="absolute top-1 left-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => moveCustomSequenceEntry(sequenceIndex, 'left')}
+                                    disabled={sequenceIndex === 0}
+                                    className="bg-black/70 text-white p-0.5 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Move left"
+                                  >
+                                    <ChevronLeft className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => moveCustomSequenceEntry(sequenceIndex, 'right')}
+                                    disabled={sequenceIndex === customImageSequence.length - 1}
+                                    className="bg-black/70 text-white p-0.5 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Move right"
+                                  >
+                                    <ChevronRight className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+
+                              {!isManual && (
+                                <span className={`absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded border ${isReference
+                                  ? 'bg-indigo-950/80 text-indigo-200 border-indigo-500/30'
+                                  : 'bg-violet-950/80 text-violet-200 border-violet-500/30'
+                                  }`}>
+                                  {isReference ? 'REF' : 'OUTFIT'}
+                                </span>
+                              )}
+
+                              <button
+                                onClick={() => {
+                                  if (isManual) removeImage(entry.id);
+                                  else if (isReference) removeCustomReferenceSelection(entry.id);
+                                  else removeCustomOutfitSelection(entry.id);
+                                }}
+                                className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-0.5 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                                title="Remove"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ));
+                        })}
 
                         {/* Add Button */}
                         <div
@@ -2778,6 +3059,7 @@ export default function App() {
                               setCustomReferenceDbImageMap({});
                               setSelectedCustomOutfitIds([]);
                               setCustomOutfitImageMap({});
+                              setCustomImageSequence([]);
                             }}
                             className="text-red-400/70 hover:text-red-400"
                           >
@@ -3424,33 +3706,68 @@ export default function App() {
 
                       {/* Grid of attached images (manual + Notion selections) */}
                       <div className="grid grid-cols-3 gap-2 mb-2">
-                        {presetReferenceImages.map((img, idx) => (
-                          <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20">
-                            <img src={img} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <button
-                              onClick={() => removePresetImage(idx)}
-                              className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-0.5 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                        {presetImageSequence.map((entry, sequenceIndex) => {
+                          const isManual = entry.kind === 'manual';
+                          const isReference = entry.kind === 'reference';
+                          const images = isManual
+                            ? (presetReferenceImages.find((item) => item.id === entry.id)?.url ? [presetReferenceImages.find((item) => item.id === entry.id).url] : [])
+                            : isReference
+                              ? (presetReferenceDbImageMap[entry.id] || [])
+                              : (presetOutfitImageMap[entry.id] || []);
+
+                          return images.map((img, imgIdx) => (
+                            <div
+                              key={`preset-${entry.kind}-${entry.id}-${imgIdx}`}
+                              className={`relative group aspect-square rounded-lg overflow-hidden bg-black/20 ${isManual
+                                ? 'border border-slate-700'
+                                : isReference
+                                  ? 'border border-indigo-500/30'
+                                  : 'border border-violet-500/30'
+                                }`}
                             >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                        {presetReferenceDbImages.map((img, idx) => (
-                          <div key={`preset-ref-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-indigo-500/30 bg-black/20">
-                            <img src={img} alt={`Notion reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
-                              REF
-                            </span>
-                          </div>
-                        ))}
-                        {presetOutfitImages.map((img, idx) => (
-                          <div key={`preset-outfit-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-violet-500/30 bg-black/20">
-                            <img src={img} alt={`Outfit reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-violet-950/80 text-violet-200 border border-violet-500/30">
-                              OUTFIT
-                            </span>
-                          </div>
-                        ))}
+                              <img src={img} alt={`Reference ${sequenceIndex + 1}`} className="w-full h-full object-cover" />
+                              {imgIdx === 0 && (
+                                <div className="absolute top-1 left-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => movePresetSequenceEntry(sequenceIndex, 'left')}
+                                    disabled={sequenceIndex === 0}
+                                    className="bg-black/70 text-white p-0.5 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Move left"
+                                  >
+                                    <ChevronLeft className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => movePresetSequenceEntry(sequenceIndex, 'right')}
+                                    disabled={sequenceIndex === presetImageSequence.length - 1}
+                                    className="bg-black/70 text-white p-0.5 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Move right"
+                                  >
+                                    <ChevronRight className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                              {!isManual && (
+                                <span className={`absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded border ${isReference
+                                  ? 'bg-indigo-950/80 text-indigo-200 border-indigo-500/30'
+                                  : 'bg-violet-950/80 text-violet-200 border-violet-500/30'
+                                  }`}>
+                                  {isReference ? 'REF' : 'OUTFIT'}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  if (isManual) removePresetImage(entry.id);
+                                  else if (isReference) removePresetReferenceSelection(entry.id);
+                                  else removePresetOutfitSelection(entry.id);
+                                }}
+                                className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-0.5 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                                title="Remove"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ));
+                        })}
 
                         {/* Add Button */}
                         <div
@@ -3481,6 +3798,7 @@ export default function App() {
                               setPresetReferenceDbImageMap({});
                               setSelectedPresetOutfitIds([]);
                               setPresetOutfitImageMap({});
+                              setPresetImageSequence([]);
                             }}
                             className="text-red-400/70 hover:text-red-400"
                           >
@@ -3841,33 +4159,68 @@ export default function App() {
 
                       {/* Grid of attached images (manual + Notion selections) */}
                       <div className="grid grid-cols-3 gap-2 mb-2">
-                        {img2txt2imgReferenceImages.map((img, idx) => (
-                          <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black/20">
-                            <img src={img} alt={`Reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <button
-                              onClick={() => removeImg2Txt2ImgReferenceImage(idx)}
-                              className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-0.5 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                        {img2txt2imgImageSequence.map((entry, sequenceIndex) => {
+                          const isManual = entry.kind === 'manual';
+                          const isReference = entry.kind === 'reference';
+                          const images = isManual
+                            ? (img2txt2imgReferenceImages.find((item) => item.id === entry.id)?.url ? [img2txt2imgReferenceImages.find((item) => item.id === entry.id).url] : [])
+                            : isReference
+                              ? (img2txt2imgReferenceDbImageMap[entry.id] || [])
+                              : (img2txt2imgOutfitImageMap[entry.id] || []);
+
+                          return images.map((img, imgIdx) => (
+                            <div
+                              key={`img2txt2img-${entry.kind}-${entry.id}-${imgIdx}`}
+                              className={`relative group aspect-square rounded-lg overflow-hidden bg-black/20 ${isManual
+                                ? 'border border-slate-700'
+                                : isReference
+                                  ? 'border border-indigo-500/30'
+                                  : 'border border-violet-500/30'
+                                }`}
                             >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                        {img2txt2imgReferenceDbImages.map((img, idx) => (
-                          <div key={`img2txt2img-ref-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-indigo-500/30 bg-black/20">
-                            <img src={img} alt={`Notion reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-500/30">
-                              REF
-                            </span>
-                          </div>
-                        ))}
-                        {img2txt2imgOutfitImages.map((img, idx) => (
-                          <div key={`img2txt2img-outfit-${idx}`} className="relative aspect-square rounded-lg overflow-hidden border border-violet-500/30 bg-black/20">
-                            <img src={img} alt={`Outfit reference ${idx + 1}`} className="w-full h-full object-cover" />
-                            <span className="absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded bg-violet-950/80 text-violet-200 border border-violet-500/30">
-                              OUTFIT
-                            </span>
-                          </div>
-                        ))}
+                              <img src={img} alt={`Reference ${sequenceIndex + 1}`} className="w-full h-full object-cover" />
+                              {imgIdx === 0 && (
+                                <div className="absolute top-1 left-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => moveImg2txt2imgSequenceEntry(sequenceIndex, 'left')}
+                                    disabled={sequenceIndex === 0}
+                                    className="bg-black/70 text-white p-0.5 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Move left"
+                                  >
+                                    <ChevronLeft className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => moveImg2txt2imgSequenceEntry(sequenceIndex, 'right')}
+                                    disabled={sequenceIndex === img2txt2imgImageSequence.length - 1}
+                                    className="bg-black/70 text-white p-0.5 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Move right"
+                                  >
+                                    <ChevronRight className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                              {!isManual && (
+                                <span className={`absolute bottom-1 left-1 text-[9px] px-1 py-0.5 rounded border ${isReference
+                                  ? 'bg-indigo-950/80 text-indigo-200 border-indigo-500/30'
+                                  : 'bg-violet-950/80 text-violet-200 border-violet-500/30'
+                                  }`}>
+                                  {isReference ? 'REF' : 'OUTFIT'}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  if (isManual) removeImg2Txt2ImgReferenceImage(entry.id);
+                                  else if (isReference) removeImg2txt2imgReferenceSelection(entry.id);
+                                  else removeImg2txt2imgOutfitSelection(entry.id);
+                                }}
+                                className="absolute top-1 right-1 bg-black/60 hover:bg-red-500/80 text-white p-0.5 rounded-full backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                                title="Remove"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ));
+                        })}
 
                         {/* Add Button */}
                         <div
@@ -3898,6 +4251,7 @@ export default function App() {
                               setImg2txt2imgReferenceDbImageMap({});
                               setSelectedImg2txt2imgOutfitIds([]);
                               setImg2txt2imgOutfitImageMap({});
+                              setImg2txt2imgImageSequence([]);
                             }}
                             className="text-red-400/70 hover:text-red-400"
                           >
@@ -3912,8 +4266,8 @@ export default function App() {
 
                     <button
                       onClick={generateImg2Txt2Img}
-                      disabled={img2txt2imgLoading || !apiKey || !img2txt2imgCaption || (img2txt2imgSelectedModel.includes('edit') && (img2txt2imgReferenceImages.length + img2txt2imgReferenceDbImages.length + img2txt2imgOutfitImages.length === 0))}
-                      className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${img2txt2imgLoading || !apiKey || !img2txt2imgCaption || (img2txt2imgSelectedModel.includes('edit') && (img2txt2imgReferenceImages.length + img2txt2imgReferenceDbImages.length + img2txt2imgOutfitImages.length === 0))
+                      disabled={img2txt2imgLoading || !apiKey || !img2txt2imgCaption || (img2txt2imgSelectedModel.includes('edit') && (getImg2txt2imgCombinedReferenceImages().length === 0))}
+                      className={`w-full py-3 px-4 rounded-xl flex items-center justify-center font-medium transition-all ${img2txt2imgLoading || !apiKey || !img2txt2imgCaption || (img2txt2imgSelectedModel.includes('edit') && (getImg2txt2imgCombinedReferenceImages().length === 0))
                         ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
                         : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-500/20 active:scale-95'
                         }`}
@@ -4513,6 +4867,94 @@ export default function App() {
                       }`}
                   >
                     {scheduleSaving ? 'Scheduling...' : 'Schedule'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {referenceSaveModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+              <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold">Add to Reference Table</h3>
+                    <p className="text-xs text-slate-500">Save this generated image in your Notion reference database</p>
+                  </div>
+                  <button
+                    onClick={closeReferenceSaveModal}
+                    className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-50"
+                    aria-label="Close reference modal"
+                    disabled={referenceSaveLoading}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-4 overflow-y-auto space-y-4">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={referenceSaveTitle}
+                      onChange={(e) => setReferenceSaveTitle(e.target.value)}
+                      placeholder="Generated Content"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Type</label>
+                    <select
+                      value={referenceSaveType}
+                      onChange={(e) => setReferenceSaveType(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
+                    >
+                      <option value="photo">photo</option>
+                      <option value="reel">reel</option>
+                    </select>
+                  </div>
+
+                  {referenceSaveImageUrl && (
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Image Preview</label>
+                      <img
+                        src={referenceSaveImageUrl}
+                        alt="To be saved in reference table"
+                        className="w-24 h-24 rounded-lg object-cover border border-slate-700"
+                      />
+                    </div>
+                  )}
+
+                  {referenceSaveError && (
+                    <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">
+                      {referenceSaveError}
+                    </div>
+                  )}
+                  {referenceSaveSuccess && (
+                    <div className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 rounded-lg p-2">
+                      {referenceSaveSuccess}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-2">
+                  <button
+                    onClick={closeReferenceSaveModal}
+                    disabled={referenceSaveLoading}
+                    className="px-3 py-2 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors text-sm disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveGeneratedToReferenceTable}
+                    disabled={referenceSaveLoading || !referenceSaveTitle.trim()}
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${referenceSaveLoading || !referenceSaveTitle.trim()
+                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }`}
+                  >
+                    {referenceSaveLoading ? 'Saving...' : 'Save to Reference'}
                   </button>
                 </div>
               </div>
